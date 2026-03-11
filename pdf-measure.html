@@ -175,15 +175,65 @@
     display: flex;
     align-items: flex-start;
     justify-content: flex-start;
-    padding: 24px;
+    padding: 0;
     background: #080809;
     cursor: crosshair;
+  }
+
+  #ruler-layout {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    grid-template-rows: auto 1fr;
+    padding: 0;
+  }
+
+  #ruler-corner {
+    width: 40px;
+    height: 28px;
+    background: #111;
+    border-right: 1px solid #333;
+    border-bottom: 1px solid #333;
+    position: sticky;
+    top: 0;
+    left: 0;
+    z-index: 4;
+  }
+
+  #ruler-top-wrapper {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    overflow: hidden;
+    height: 28px;
+  }
+
+  #ruler-top {
+    display: block;
+    height: 28px;
+    background: #111;
+    border-bottom: 1px solid #333;
+  }
+
+  #ruler-left-wrapper {
+    position: sticky;
+    left: 0;
+    z-index: 3;
+    overflow: hidden;
+    width: 40px;
+  }
+
+  #ruler-left {
+    display: block;
+    width: 40px;
+    background: #111;
+    border-right: 1px solid #333;
   }
 
   #canvas-wrapper {
     position: relative;
     display: inline-block;
     box-shadow: 0 0 0 1px var(--border), 0 20px 60px rgba(0,0,0,0.6);
+    margin: 24px;
   }
 
   #pdf-canvas {
@@ -355,10 +405,15 @@
     </div>
     <div style="display:flex; flex:1; overflow:hidden;">
       <div id="scroll-container">
-        <div id="canvas-wrapper">
-          <canvas id="pdf-canvas"></canvas>
-          <canvas id="overlay-canvas"></canvas>
-          <canvas id="measure-canvas"></canvas>
+        <div id="ruler-layout">
+          <div id="ruler-corner"></div>
+          <div id="ruler-top-wrapper"><canvas id="ruler-top"></canvas></div>
+          <div id="ruler-left-wrapper"><canvas id="ruler-left"></canvas></div>
+          <div id="canvas-wrapper">
+            <canvas id="pdf-canvas"></canvas>
+            <canvas id="overlay-canvas"></canvas>
+            <canvas id="measure-canvas"></canvas>
+          </div>
         </div>
       </div>
       <div id="sidebar">
@@ -471,12 +526,16 @@ function drawGrid() {
   const canvas = document.getElementById('overlay-canvas');
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  if (!showGrid) return;
 
   const spacingPt = GRID_SPACING[unit];
   const spacingPx = spacingPt * zoom;
 
-  ctx.strokeStyle = 'rgba(232,255,71,0.12)';
+  // Always draw rulers (even if grid overlay is off)
+  drawRulers(canvas.width, canvas.height, spacingPx, spacingPt);
+
+  if (!showGrid) return;
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.15)';
   ctx.lineWidth = 0.5;
   ctx.setLineDash([]);
 
@@ -488,30 +547,56 @@ function drawGrid() {
   for (let y = spacingPx; y < canvas.height; y += spacingPx) {
     ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
   }
+}
 
-  // Labels
-  const fontSize = Math.max(8, 9*zoom/1.5);
-  ctx.font = `${fontSize}px DM Mono, monospace`;
+function drawRulers(pdfW, pdfH, spacingPx, spacingPt) {
+  const rulerH = 28;
+  const rulerW = 40;
+  const margin = 24; // matches canvas-wrapper margin
+
+  // Top ruler
+  const topCanvas = document.getElementById('ruler-top');
+  topCanvas.width = pdfW + margin * 2;
+  topCanvas.height = rulerH;
+  const tCtx = topCanvas.getContext('2d');
+  tCtx.fillStyle = '#111';
+  tCtx.fillRect(0, 0, topCanvas.width, topCanvas.height);
+
+  const fontSize = Math.max(9, 10 * zoom / 1.5);
+  tCtx.font = `${fontSize}px DM Mono, monospace`;
+  tCtx.fillStyle = '#ccc';
+  tCtx.strokeStyle = '#555';
+  tCtx.lineWidth = 0.5;
+
   let i = 1;
-  for (let x = spacingPx; x < canvas.width - 10; x += spacingPx) {
-    const text = `${fmtVal(i * ptToUnit(spacingPt))}${UNIT_LABEL[unit]}`;
-    const tw = ctx.measureText(text).width;
-    const tx = x + 3, ty = 10;
-    ctx.fillStyle = 'rgba(0,0,0,0.7)';
-    ctx.fillRect(tx - 2, ty - fontSize, tw + 4, fontSize + 4);
-    ctx.fillStyle = '#e8ff47';
-    ctx.fillText(text, tx, ty);
+  for (let x = spacingPx; x < pdfW; x += spacingPx) {
+    const tx = x + margin;
+    tCtx.beginPath(); tCtx.moveTo(tx, rulerH); tCtx.lineTo(tx, rulerH - 8); tCtx.stroke();
+    const text = `${fmtVal(i * ptToUnit(spacingPt))}`;
+    tCtx.fillText(text, tx + 2, rulerH - 12);
     i++;
   }
+
+  // Left ruler
+  const leftCanvas = document.getElementById('ruler-left');
+  leftCanvas.width = rulerW;
+  leftCanvas.height = pdfH + margin * 2;
+  const lCtx = leftCanvas.getContext('2d');
+  lCtx.fillStyle = '#111';
+  lCtx.fillRect(0, 0, leftCanvas.width, leftCanvas.height);
+
+  lCtx.font = `${fontSize}px DM Mono, monospace`;
+  lCtx.fillStyle = '#ccc';
+  lCtx.strokeStyle = '#555';
+  lCtx.lineWidth = 0.5;
+
   i = 1;
-  for (let y = spacingPx; y < canvas.height - 10; y += spacingPx) {
-    const text = `${fmtVal(i * ptToUnit(spacingPt))}${UNIT_LABEL[unit]}`;
-    const tw = ctx.measureText(text).width;
-    const tx = 3, ty = y - 3;
-    ctx.fillStyle = 'rgba(0,0,0,0.7)';
-    ctx.fillRect(tx - 2, ty - fontSize, tw + 4, fontSize + 4);
-    ctx.fillStyle = '#e8ff47';
-    ctx.fillText(text, tx, ty);
+  for (let y = spacingPx; y < pdfH; y += spacingPx) {
+    const ty = y + margin;
+    lCtx.beginPath(); lCtx.moveTo(rulerW, ty); lCtx.lineTo(rulerW - 8, ty); lCtx.stroke();
+    const text = `${fmtVal(i * ptToUnit(spacingPt))}`;
+    const tw = lCtx.measureText(text).width;
+    lCtx.fillText(text, rulerW - 10 - tw, ty + fontSize / 3);
     i++;
   }
 }
