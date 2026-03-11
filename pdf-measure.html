@@ -1,0 +1,822 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PDF Measure Tool</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0e0e0f;
+    --surface: #1a1a1c;
+    --border: #2e2e32;
+    --accent: #e8ff47;
+    --accent2: #47c8ff;
+    --text: #f0f0ee;
+    --muted: #888884;
+    --danger: #ff6b6b;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  header {
+    padding: 18px 28px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .logo {
+    font-size: 18px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    color: var(--text);
+  }
+  .logo span { color: var(--accent); }
+
+  .controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .pill {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 6px 14px;
+    font-size: 12px;
+    font-family: 'DM Mono', monospace;
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .pill:hover, .pill.active {
+    background: var(--accent);
+    color: #000;
+    border-color: var(--accent);
+  }
+
+  .tool-btn {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 7px 14px;
+    font-size: 12px;
+    font-family: 'DM Mono', monospace;
+    color: var(--text);
+    cursor: pointer;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .tool-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .tool-btn.active { background: var(--accent); color: #000; border-color: var(--accent); }
+
+  .divider { width: 1px; height: 24px; background: var(--border); }
+
+  .main {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+  }
+
+  /* Upload state */
+  #upload-zone {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    padding: 40px;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: 2px dashed transparent;
+    margin: 24px;
+    border-radius: 16px;
+  }
+  #upload-zone:hover, #upload-zone.drag-over {
+    border-color: var(--accent);
+    background: rgba(232,255,71,0.03);
+  }
+
+  .upload-icon {
+    width: 72px; height: 72px;
+    border: 2px solid var(--border);
+    border-radius: 16px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 28px;
+  }
+
+  .upload-title { font-size: 24px; font-weight: 700; }
+  .upload-sub { font-size: 14px; color: var(--muted); font-family: 'DM Mono', monospace; }
+
+  .upload-btn {
+    background: var(--accent);
+    color: #000;
+    border: none;
+    border-radius: 8px;
+    padding: 12px 28px;
+    font-size: 14px;
+    font-weight: 700;
+    font-family: 'Syne', sans-serif;
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+  .upload-btn:hover { opacity: 0.85; }
+
+  /* Canvas area */
+  #canvas-area {
+    flex: 1;
+    display: none;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  #info-bar {
+    padding: 8px 20px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    font-size: 12px;
+    font-family: 'DM Mono', monospace;
+    color: var(--muted);
+    flex-wrap: wrap;
+  }
+
+  .info-tag {
+    display: flex; align-items: center; gap: 6px;
+  }
+  .info-tag strong { color: var(--accent); font-weight: 500; }
+
+  #scroll-container {
+    flex: 1;
+    overflow: auto;
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-start;
+    padding: 24px;
+    background: #080809;
+    cursor: crosshair;
+  }
+
+  #canvas-wrapper {
+    position: relative;
+    display: inline-block;
+    box-shadow: 0 0 0 1px var(--border), 0 20px 60px rgba(0,0,0,0.6);
+  }
+
+  #pdf-canvas {
+    display: block;
+  }
+
+  #overlay-canvas {
+    position: absolute;
+    top: 0; left: 0;
+    pointer-events: none;
+  }
+
+  #measure-canvas {
+    position: absolute;
+    top: 0; left: 0;
+    cursor: crosshair;
+  }
+
+  /* Measurement tooltip */
+  #measure-tooltip {
+    position: fixed;
+    background: #000;
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-family: 'DM Mono', monospace;
+    pointer-events: none;
+    display: none;
+    z-index: 1000;
+    white-space: nowrap;
+  }
+
+  /* Sidebar */
+  #sidebar {
+    width: 220px;
+    min-width: 220px;
+    border-left: 1px solid var(--border);
+    background: var(--surface);
+    display: none;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  .sidebar-section {
+    padding: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .sidebar-label {
+    font-size: 10px;
+    font-family: 'DM Mono', monospace;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 10px;
+  }
+
+  .measurement-item {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin-bottom: 6px;
+    font-size: 11px;
+    font-family: 'DM Mono', monospace;
+  }
+  .measurement-item .val { color: var(--accent); font-size: 13px; font-weight: 500; }
+  .measurement-item .sub { color: var(--muted); font-size: 10px; margin-top: 2px; }
+
+  .clear-btn {
+    width: 100%;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    border-radius: 6px;
+    padding: 6px;
+    font-size: 11px;
+    font-family: 'DM Mono', monospace;
+    cursor: pointer;
+    margin-top: 8px;
+    transition: all 0.15s;
+  }
+  .clear-btn:hover { border-color: var(--danger); color: var(--danger); }
+
+  #file-input { display: none; }
+
+  .zoom-controls {
+    display: flex; align-items: center; gap: 6px;
+  }
+  .zoom-btn {
+    width: 26px; height: 26px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    font-size: 14px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s;
+    font-family: monospace;
+  }
+  .zoom-btn:hover { border-color: var(--accent); color: var(--accent); }
+  #zoom-label { font-size: 12px; font-family: 'DM Mono', monospace; color: var(--muted); min-width: 40px; text-align: center; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">pdf<span>measure</span></div>
+
+  <div class="controls" id="header-controls" style="display:none">
+    <!-- Unit switcher -->
+    <div class="pill active" data-unit="cm" onclick="setUnit('cm')">cm</div>
+    <div class="pill" data-unit="mm" onclick="setUnit('mm')">mm</div>
+    <div class="pill" data-unit="in" onclick="setUnit('in')">in</div>
+    <div class="pill" data-unit="px" onclick="setUnit('px')">px</div>
+
+    <div class="divider"></div>
+
+    <!-- Grid toggle -->
+    <button class="tool-btn active" id="grid-btn" onclick="toggleGrid()">
+      ⊞ Grid
+    </button>
+
+    <!-- Ruler tool -->
+    <button class="tool-btn" id="ruler-btn" onclick="toggleRuler()">
+      📏 Measure
+    </button>
+
+    <!-- Draw line tool -->
+    <button class="tool-btn" id="line-btn" onclick="toggleLineDraw()">
+      ✏️ Draw Line
+    </button>
+
+    <div class="divider"></div>
+
+    <!-- Zoom -->
+    <div class="zoom-controls">
+      <button class="zoom-btn" onclick="adjustZoom(-0.25)">−</button>
+      <span id="zoom-label">100%</span>
+      <button class="zoom-btn" onclick="adjustZoom(0.25)">+</button>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- New file -->
+    <button class="tool-btn" onclick="document.getElementById('file-input').click()">↑ New File</button>
+  </div>
+</header>
+
+<div class="main">
+  <!-- Upload zone -->
+  <div id="upload-zone" onclick="document.getElementById('file-input').click()">
+    <div class="upload-icon">📄</div>
+    <div class="upload-title">Drop your PDF here</div>
+    <div class="upload-sub">or click to browse</div>
+    <button class="upload-btn" onclick="event.stopPropagation(); document.getElementById('file-input').click()">Choose PDF</button>
+  </div>
+
+  <!-- Canvas area -->
+  <div id="canvas-area">
+    <div id="info-bar">
+      <div class="info-tag">📄 <span id="info-filename">—</span></div>
+      <div class="info-tag">📐 Size: <strong id="info-size">—</strong></div>
+      <div class="info-tag">📏 Format: <strong id="info-format">—</strong></div>
+      <div class="info-tag">🔲 <strong id="info-dims">—</strong></div>
+    </div>
+    <div style="display:flex; flex:1; overflow:hidden;">
+      <div id="scroll-container">
+        <div id="canvas-wrapper">
+          <canvas id="pdf-canvas"></canvas>
+          <canvas id="overlay-canvas"></canvas>
+          <canvas id="measure-canvas"></canvas>
+        </div>
+      </div>
+      <div id="sidebar">
+        <div class="sidebar-section">
+          <div class="sidebar-label">Measurements</div>
+          <div id="measurements-list"></div>
+          <button class="clear-btn" onclick="clearMeasurements()">✕ Clear measurements</button>
+        </div>
+        <div class="sidebar-section">
+          <div class="sidebar-label">Drawn Lines</div>
+          <div id="lines-list"><div style="font-size:11px;font-family:'DM Mono',monospace;color:var(--muted)">No lines yet. Hold Shift to snap H/V.</div></div>
+          <button class="clear-btn" onclick="clearLines()">✕ Clear lines</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="measure-tooltip"></div>
+<input type="file" id="file-input" accept=".pdf">
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+let pdfDoc = null;
+let pageWidthPt = 0, pageHeightPt = 0;
+let zoom = 1.5;
+let unit = 'cm';
+let showGrid = true;
+let rulerMode = false;
+let lineDrawMode = false;
+let rulerStart = null;
+let lineStart = null;
+let measurements = [];
+let drawnLines = [];
+let currentMousePos = null;
+let shiftHeld = false;
+
+const PT_TO = { cm: 0.03527778, mm: 0.352778, in: 0.013889, px: 1.333333 };
+const UNIT_LABEL = { cm: 'cm', mm: 'mm', in: '″', px: 'px' };
+const GRID_SPACING = { cm: 72*0.393701, mm: 72*0.0393701*10, in: 72, px: 100 };
+
+function ptToUnit(pt) { return pt * PT_TO[unit]; }
+function fmtVal(val) { return unit === 'px' ? val.toFixed(0) : val.toFixed(2); }
+
+// Detect paper format
+function detectFormat(wPt, hPt) {
+  const w = wPt * PT_TO.mm, h = hPt * PT_TO.mm;
+  const formats = [
+    { name:'A4', w:210, h:297 }, { name:'A3', w:297, h:420 },
+    { name:'A5', w:148, h:210 }, { name:'Letter', w:215.9, h:279.4 },
+    { name:'Legal', w:215.9, h:355.6 }
+  ];
+  for (const f of formats) {
+    if ((Math.abs(w-f.w)<3 && Math.abs(h-f.h)<3) || (Math.abs(w-f.h)<3 && Math.abs(h-f.w)<3)) {
+      return f.name + (w > h ? ' Landscape' : ' Portrait');
+    }
+  }
+  return 'Custom';
+}
+
+async function loadPDF(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const page = await pdfDoc.getPage(1);
+  const vp = page.getViewport({ scale: 1 });
+  pageWidthPt = vp.width;
+  pageHeightPt = vp.height;
+
+  // Update info bar
+  document.getElementById('info-filename').textContent = file.name;
+  const wMM = (pageWidthPt * PT_TO.mm).toFixed(1);
+  const hMM = (pageHeightPt * PT_TO.mm).toFixed(1);
+  document.getElementById('info-size').textContent = `${wMM} × ${hMM} mm`;
+  document.getElementById('info-format').textContent = detectFormat(pageWidthPt, pageHeightPt);
+  document.getElementById('info-dims').textContent = `${pageWidthPt.toFixed(0)} × ${pageHeightPt.toFixed(0)} pt`;
+
+  // Show UI
+  document.getElementById('upload-zone').style.display = 'none';
+  document.getElementById('canvas-area').style.display = 'flex';
+  document.getElementById('header-controls').style.display = 'flex';
+  document.getElementById('sidebar').style.display = 'flex';
+
+  renderPage();
+}
+
+async function renderPage() {
+  const page = await pdfDoc.getPage(1);
+  const vp = page.getViewport({ scale: zoom });
+
+  const pdfCanvas = document.getElementById('pdf-canvas');
+  const overlayCanvas = document.getElementById('overlay-canvas');
+  const measureCanvas = document.getElementById('measure-canvas');
+  const ctx = pdfCanvas.getContext('2d');
+
+  pdfCanvas.width = vp.width;
+  pdfCanvas.height = vp.height;
+  overlayCanvas.width = vp.width;
+  overlayCanvas.height = vp.height;
+  measureCanvas.width = vp.width;
+  measureCanvas.height = vp.height;
+
+  await page.render({ canvasContext: ctx, viewport: vp }).promise;
+
+  drawGrid();
+  drawMeasurements();
+}
+
+function drawGrid() {
+  const canvas = document.getElementById('overlay-canvas');
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (!showGrid) return;
+
+  const spacingPt = GRID_SPACING[unit];
+  const spacingPx = spacingPt * zoom;
+
+  ctx.strokeStyle = 'rgba(232,255,71,0.12)';
+  ctx.lineWidth = 0.5;
+  ctx.setLineDash([]);
+
+  // Vertical lines
+  for (let x = spacingPx; x < canvas.width; x += spacingPx) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+  }
+  // Horizontal lines
+  for (let y = spacingPx; y < canvas.height; y += spacingPx) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+  }
+
+  // Labels
+  ctx.fillStyle = 'rgba(232,255,71,0.5)';
+  ctx.font = `${Math.max(8, 9*zoom/1.5)}px DM Mono, monospace`;
+  let i = 1;
+  for (let x = spacingPx; x < canvas.width - 10; x += spacingPx) {
+    ctx.fillText(`${fmtVal(i * ptToUnit(spacingPt))}${UNIT_LABEL[unit]}`, x + 3, 10);
+    i++;
+  }
+  i = 1;
+  for (let y = spacingPx; y < canvas.height - 10; y += spacingPx) {
+    ctx.save();
+    ctx.translate(10, y - 3);
+    ctx.fillText(`${fmtVal(i * ptToUnit(spacingPt))}${UNIT_LABEL[unit]}`, 0, 0);
+    ctx.restore();
+    i++;
+  }
+}
+
+function drawMeasurements() {
+  const canvas = document.getElementById('measure-canvas');
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Draw completed measurements
+  for (const m of measurements) {
+    drawMeasureLine(ctx, m.x1, m.y1, m.x2, m.y2, m.label, false);
+  }
+
+  // Draw active measurement
+  if (rulerMode && rulerStart && currentMousePos) {
+    drawMeasureLine(ctx, rulerStart.x, rulerStart.y, currentMousePos.x, currentMousePos.y, null, true);
+  }
+
+  // Draw all stored + in-progress lines
+  drawAllLines();
+}
+
+function drawMeasureLine(ctx, x1, y1, x2, y2, label, isActive) {
+  const color = isActive ? 'rgba(71,200,255,0.9)' : 'rgba(232,255,71,0.9)';
+  const dx = x2 - x1, dy = y2 - y1;
+  const len = Math.sqrt(dx*dx + dy*dy);
+  if (len < 2) return;
+
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash(isActive ? [5, 3] : []);
+
+  // Main line
+  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+
+  // End caps
+  const nx = -dy/len * 8, ny = dx/len * 8;
+  ctx.setLineDash([]);
+  ctx.beginPath(); ctx.moveTo(x1+nx, y1+ny); ctx.lineTo(x1-nx, y1-ny); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x2+nx, y2+ny); ctx.lineTo(x2-nx, y2-ny); ctx.stroke();
+
+  // Label
+  if (label) {
+    const mx = (x1+x2)/2, my = (y1+y2)/2;
+    ctx.font = 'bold 11px DM Mono, monospace';
+    const tw = ctx.measureText(label).width;
+    ctx.fillStyle = 'rgba(0,0,0,0.8)';
+    ctx.fillRect(mx - tw/2 - 4, my - 10, tw + 8, 16);
+    ctx.fillStyle = color;
+    ctx.fillText(label, mx - tw/2, my + 2);
+  }
+}
+
+function getCanvasPos(e) {
+  const canvas = document.getElementById('measure-canvas');
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: (e.clientX - rect.left) * (canvas.width / rect.width),
+    y: (e.clientY - rect.top) * (canvas.height / rect.height)
+  };
+}
+
+function canvasPtToDoc(cx, cy) {
+  return { x: cx / zoom, y: cy / zoom };
+}
+
+function getMeasureLabel(x1, y1, x2, y2) {
+  const p1 = canvasPtToDoc(x1, y1), p2 = canvasPtToDoc(x2, y2);
+  const dx = p2.x - p1.x, dy = p2.y - p1.y;
+  const distPt = Math.sqrt(dx*dx + dy*dy);
+  const distU = ptToUnit(distPt);
+  const angle = Math.atan2(Math.abs(dy), Math.abs(dx)) * 180 / Math.PI;
+
+  // If mostly horizontal or vertical, show W or H
+  if (angle < 15) return `W: ${fmtVal(ptToUnit(Math.abs(dx)))} ${UNIT_LABEL[unit]}`;
+  if (angle > 75) return `H: ${fmtVal(ptToUnit(Math.abs(dy)))} ${UNIT_LABEL[unit]}`;
+  return `${fmtVal(distU)} ${UNIT_LABEL[unit]}`;
+}
+
+// Measure canvas events
+document.getElementById('measure-canvas').addEventListener('mousedown', e => {
+  const pos = getCanvasPos(e);
+
+  if (rulerMode) {
+    if (!rulerStart) {
+      rulerStart = pos;
+    } else {
+      const label = getMeasureLabel(rulerStart.x, rulerStart.y, pos.x, pos.y);
+      measurements.push({ x1: rulerStart.x, y1: rulerStart.y, x2: pos.x, y2: pos.y, label });
+      addMeasurementToSidebar(label, rulerStart, pos);
+      rulerStart = null;
+      drawMeasurements();
+    }
+  } else if (lineDrawMode) {
+    if (!lineStart) {
+      lineStart = pos;
+    } else {
+      const end = shiftHeld ? snapToAxis(lineStart, pos) : pos;
+      const ln = { x1: lineStart.x, y1: lineStart.y, x2: end.x, y2: end.y };
+      drawnLines.push(ln);
+      addLineToSidebar(ln);
+      lineStart = null;
+      drawMeasurements();
+    }
+  }
+});
+
+document.getElementById('measure-canvas').addEventListener('mousemove', e => {
+  if (!rulerMode && !lineDrawMode) return;
+  const pos = getCanvasPos(e);
+  currentMousePos = pos;
+
+  const tooltip = document.getElementById('measure-tooltip');
+  tooltip.style.left = (e.clientX + 14) + 'px';
+  tooltip.style.top = (e.clientY - 10) + 'px';
+
+  if (rulerMode) {
+    if (rulerStart) {
+      tooltip.textContent = getMeasureLabel(rulerStart.x, rulerStart.y, pos.x, pos.y);
+      tooltip.style.display = 'block';
+    } else {
+      const p = canvasPtToDoc(pos.x, pos.y);
+      tooltip.textContent = `${fmtVal(ptToUnit(p.x))} , ${fmtVal(ptToUnit(p.y))} ${UNIT_LABEL[unit]}`;
+      tooltip.style.display = 'block';
+    }
+  } else if (lineDrawMode) {
+    if (lineStart) {
+      const end = shiftHeld ? snapToAxis(lineStart, pos) : pos;
+      const dx = Math.abs(end.x - lineStart.x) / zoom;
+      const dy = Math.abs(end.y - lineStart.y) / zoom;
+      const len = Math.sqrt(dx*dx + dy*dy);
+      const snapNote = shiftHeld ? (Math.abs(end.y - lineStart.y) < 1 ? ' [H]' : ' [V]') : '';
+      tooltip.textContent = `${fmtVal(ptToUnit(len))} ${UNIT_LABEL[unit]}${snapNote}`;
+      tooltip.style.display = 'block';
+    } else {
+      tooltip.textContent = shiftHeld ? 'Shift: snap active' : 'Click to start line';
+      tooltip.style.display = 'block';
+    }
+  }
+  drawMeasurements();
+});
+
+document.getElementById('measure-canvas').addEventListener('mouseleave', () => {
+  document.getElementById('measure-tooltip').style.display = 'none';
+  currentMousePos = null;
+  drawMeasurements();
+});
+
+// Right click to cancel
+document.getElementById('measure-canvas').addEventListener('contextmenu', e => {
+  e.preventDefault();
+  rulerStart = null;
+  lineStart = null;
+  drawMeasurements();
+});
+
+function addMeasurementToSidebar(label, p1, p2) {
+  const list = document.getElementById('measurements-list');
+  const item = document.createElement('div');
+  item.className = 'measurement-item';
+  const p1doc = canvasPtToDoc(p1.x, p1.y), p2doc = canvasPtToDoc(p2.x, p2.y);
+  const dx = Math.abs(p2doc.x - p1doc.x), dy = Math.abs(p2doc.y - p1doc.y);
+  item.innerHTML = `<div class="val">${label}</div>
+    <div class="sub">Δx: ${fmtVal(ptToUnit(dx))} · Δy: ${fmtVal(ptToUnit(dy))}</div>`;
+  list.appendChild(item);
+}
+
+function clearMeasurements() {
+  measurements = [];
+  rulerStart = null;
+  document.getElementById('measurements-list').innerHTML = '';
+  drawMeasurements();
+}
+
+function setUnit(u) {
+  unit = u;
+  document.querySelectorAll('[data-unit]').forEach(el => {
+    el.classList.toggle('active', el.dataset.unit === u);
+  });
+  if (pdfDoc) { drawGrid(); drawMeasurements(); }
+}
+
+function toggleGrid() {
+  showGrid = !showGrid;
+  document.getElementById('grid-btn').classList.toggle('active', showGrid);
+  drawGrid();
+}
+
+function toggleRuler() {
+  rulerMode = !rulerMode;
+  if (rulerMode) {
+    lineDrawMode = false;
+    lineStart = null;
+    document.getElementById('line-btn').classList.remove('active');
+  }
+  rulerStart = null;
+  document.getElementById('ruler-btn').classList.toggle('active', rulerMode);
+  document.getElementById('measure-canvas').style.cursor = rulerMode ? 'crosshair' : 'default';
+  document.getElementById('scroll-container').style.cursor = rulerMode ? 'crosshair' : 'grab';
+  drawMeasurements();
+}
+
+function adjustZoom(delta) {
+  zoom = Math.max(0.25, Math.min(4, zoom + delta));
+  document.getElementById('zoom-label').textContent = Math.round(zoom * 100) + '%';
+  if (pdfDoc) renderPage();
+}
+
+// File input
+document.getElementById('file-input').addEventListener('change', e => {
+  if (e.target.files[0]) loadPDF(e.target.files[0]);
+});
+
+// Drag and drop
+const uploadZone = document.getElementById('upload-zone');
+document.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
+document.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
+document.addEventListener('drop', e => {
+  e.preventDefault();
+  uploadZone.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file && file.type === 'application/pdf') loadPDF(file);
+});
+
+// ── DRAW LINE TOOL ──────────────────────────────────────────
+
+function snapToAxis(start, end) {
+  // If shift held, snap to perfectly horizontal or vertical
+  const dx = Math.abs(end.x - start.x);
+  const dy = Math.abs(end.y - start.y);
+  if (dx > dy) return { x: end.x, y: start.y }; // horizontal
+  return { x: start.x, y: end.y };               // vertical
+}
+
+function drawAllLines() {
+  const canvas = document.getElementById('measure-canvas');
+  const ctx = canvas.getContext('2d');
+
+  // Draw all stored lines
+  for (const ln of drawnLines) {
+    ctx.strokeStyle = 'rgba(255, 107, 107, 0.85)';
+    ctx.lineWidth = 1.2;
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.moveTo(ln.x1, ln.y1);
+    ctx.lineTo(ln.x2, ln.y2);
+    ctx.stroke();
+  }
+
+  // Draw in-progress line
+  if (lineDrawMode && lineStart && currentMousePos) {
+    const end = shiftHeld ? snapToAxis(lineStart, currentMousePos) : currentMousePos;
+    ctx.strokeStyle = 'rgba(255, 107, 107, 0.6)';
+    ctx.lineWidth = 1.2;
+    ctx.setLineDash([6, 3]);
+    ctx.beginPath();
+    ctx.moveTo(lineStart.x, lineStart.y);
+    ctx.lineTo(end.x, end.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+}
+
+function toggleLineDraw() {
+  lineDrawMode = !lineDrawMode;
+  if (lineDrawMode) {
+    rulerMode = false;
+    rulerStart = null;
+    document.getElementById('ruler-btn').classList.remove('active');
+  }
+  lineStart = null;
+  document.getElementById('line-btn').classList.toggle('active', lineDrawMode);
+  document.getElementById('measure-canvas').style.cursor = lineDrawMode ? 'crosshair' : 'default';
+  drawMeasurements();
+}
+
+function clearLines() {
+  drawnLines = [];
+  lineStart = null;
+  document.getElementById('lines-list').innerHTML =
+    '<div style="font-size:11px;font-family:\'DM Mono\',monospace;color:var(--muted)">No lines yet. Hold Shift to snap H/V.</div>';
+  drawMeasurements();
+}
+
+function addLineToSidebar(ln) {
+  const list = document.getElementById('lines-list');
+  // Remove placeholder text if present
+  if (list.querySelector('div[style]')) list.innerHTML = '';
+  const isH = Math.abs(ln.y2 - ln.y1) < 1;
+  const isV = Math.abs(ln.x2 - ln.x1) < 1;
+  const type = isH ? 'Horizontal' : isV ? 'Vertical' : 'Diagonal';
+  const p1 = canvasPtToDoc(ln.x1, ln.y1), p2 = canvasPtToDoc(ln.x2, ln.y2);
+  const dx = Math.abs(p2.x - p1.x), dy = Math.abs(p2.y - p1.y);
+  const len = Math.sqrt(dx*dx + dy*dy);
+  const item = document.createElement('div');
+  item.className = 'measurement-item';
+  item.style.borderColor = 'rgba(255,107,107,0.4)';
+  item.innerHTML = `<div class="val" style="color:var(--accent3)">${type}</div>
+    <div class="sub">${fmtVal(ptToUnit(len))} ${UNIT_LABEL[unit]}</div>`;
+  list.appendChild(item);
+}
+
+// Shift key tracking
+document.addEventListener('keydown', e => {
+  if (e.key === 'Shift') { shiftHeld = true; if (lineDrawMode) drawMeasurements(); }
+  // Escape cancels active tool start point
+  if (e.key === 'Escape') { rulerStart = null; lineStart = null; drawMeasurements(); }
+});
+document.addEventListener('keyup', e => {
+  if (e.key === 'Shift') { shiftHeld = false; if (lineDrawMode) drawMeasurements(); }
+});
+
+
+</script>
+</body>
+</html>
