@@ -534,20 +534,33 @@ function drawGrid() {
   drawRulers(canvas.width, canvas.height, spacingPx, spacingPt);
 
   // Edge tick marks on all four sides of the page
-  const tickLen = 10;
-  ctx.strokeStyle = 'rgba(255,255,255,0.5)';
-  ctx.lineWidth = 1;
+  const tickLen = 16;
+  ctx.lineWidth = 2;
   ctx.setLineDash([]);
 
   // Top & bottom ticks (vertical spacing)
   for (let x = spacingPx; x < canvas.width; x += spacingPx) {
+    // Dark stroke for contrast on light backgrounds
+    ctx.strokeStyle = 'rgba(0,0,0,0.8)';
     ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, tickLen); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(x, canvas.height); ctx.lineTo(x, canvas.height - tickLen); ctx.stroke();
+    // White inner line for contrast on dark backgrounds
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x + 1, 0); ctx.lineTo(x + 1, tickLen); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x + 1, canvas.height); ctx.lineTo(x + 1, canvas.height - tickLen); ctx.stroke();
+    ctx.lineWidth = 2;
   }
   // Left & right ticks (horizontal spacing)
   for (let y = spacingPx; y < canvas.height; y += spacingPx) {
+    ctx.strokeStyle = 'rgba(0,0,0,0.8)';
     ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(tickLen, y); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(canvas.width, y); ctx.lineTo(canvas.width - tickLen, y); ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0, y + 1); ctx.lineTo(tickLen, y + 1); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(canvas.width, y + 1); ctx.lineTo(canvas.width - tickLen, y + 1); ctx.stroke();
+    ctx.lineWidth = 2;
   }
 
   if (!showGrid) return;
