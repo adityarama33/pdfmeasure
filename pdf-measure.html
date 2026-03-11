@@ -182,9 +182,75 @@
 
   #ruler-layout {
     display: grid;
-    grid-template-columns: auto 1fr;
-    grid-template-rows: auto 1fr;
+    grid-template-columns: auto 1fr auto;
+    grid-template-rows: auto 1fr auto;
     padding: 0;
+  }
+
+  #ruler-corner-tr {
+    width: 40px;
+    height: 28px;
+    background: #111;
+    border-left: 1px solid #333;
+    border-bottom: 1px solid #333;
+    position: sticky;
+    top: 0;
+    right: 0;
+    z-index: 4;
+  }
+
+  #ruler-corner-bl {
+    width: 40px;
+    height: 28px;
+    background: #111;
+    border-right: 1px solid #333;
+    border-top: 1px solid #333;
+    position: sticky;
+    bottom: 0;
+    left: 0;
+    z-index: 4;
+  }
+
+  #ruler-corner-br {
+    width: 40px;
+    height: 28px;
+    background: #111;
+    border-left: 1px solid #333;
+    border-top: 1px solid #333;
+    position: sticky;
+    bottom: 0;
+    right: 0;
+    z-index: 4;
+  }
+
+  #ruler-right-wrapper {
+    position: sticky;
+    right: 0;
+    z-index: 3;
+    overflow: hidden;
+    width: 40px;
+  }
+
+  #ruler-right {
+    display: block;
+    width: 40px;
+    background: #111;
+    border-left: 1px solid #333;
+  }
+
+  #ruler-bottom-wrapper {
+    position: sticky;
+    bottom: 0;
+    z-index: 3;
+    overflow: hidden;
+    height: 28px;
+  }
+
+  #ruler-bottom {
+    display: block;
+    height: 28px;
+    background: #111;
+    border-top: 1px solid #333;
   }
 
   #ruler-corner {
@@ -370,6 +436,11 @@
       ✏️ Draw Line
     </button>
 
+    <!-- Tick marks toggle -->
+    <button class="tool-btn active" id="tick-btn" onclick="toggleTicks()">
+      ┼ Ticks
+    </button>
+
     <div class="divider"></div>
 
     <!-- Zoom -->
@@ -408,12 +479,17 @@
         <div id="ruler-layout">
           <div id="ruler-corner"></div>
           <div id="ruler-top-wrapper"><canvas id="ruler-top"></canvas></div>
+          <div id="ruler-corner-tr"></div>
           <div id="ruler-left-wrapper"><canvas id="ruler-left"></canvas></div>
           <div id="canvas-wrapper">
             <canvas id="pdf-canvas"></canvas>
             <canvas id="overlay-canvas"></canvas>
             <canvas id="measure-canvas"></canvas>
           </div>
+          <div id="ruler-right-wrapper"><canvas id="ruler-right"></canvas></div>
+          <div id="ruler-corner-bl"></div>
+          <div id="ruler-bottom-wrapper"><canvas id="ruler-bottom"></canvas></div>
+          <div id="ruler-corner-br"></div>
         </div>
       </div>
       <div id="sidebar">
@@ -443,6 +519,7 @@ let pageWidthPt = 0, pageHeightPt = 0;
 let zoom = 1.5;
 let unit = 'cm';
 let showGrid = true;
+let showTicks = true;
 let rulerMode = false;
 let lineDrawMode = false;
 let rulerStart = null;
@@ -534,33 +611,33 @@ function drawGrid() {
   drawRulers(canvas.width, canvas.height, spacingPx, spacingPt);
 
   // Edge tick marks on all four sides of the page
-  const tickLen = 16;
-  ctx.lineWidth = 2;
-  ctx.setLineDash([]);
+  if (showTicks) {
+    const tickLen = 8;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([]);
 
-  // Top & bottom ticks (vertical spacing)
-  for (let x = spacingPx; x < canvas.width; x += spacingPx) {
-    // Dark stroke for contrast on light backgrounds
-    ctx.strokeStyle = 'rgba(0,0,0,0.8)';
-    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, tickLen); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(x, canvas.height); ctx.lineTo(x, canvas.height - tickLen); ctx.stroke();
-    // White inner line for contrast on dark backgrounds
-    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
-    ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(x + 1, 0); ctx.lineTo(x + 1, tickLen); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(x + 1, canvas.height); ctx.lineTo(x + 1, canvas.height - tickLen); ctx.stroke();
-    ctx.lineWidth = 2;
-  }
-  // Left & right ticks (horizontal spacing)
-  for (let y = spacingPx; y < canvas.height; y += spacingPx) {
-    ctx.strokeStyle = 'rgba(0,0,0,0.8)';
-    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(tickLen, y); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(canvas.width, y); ctx.lineTo(canvas.width - tickLen, y); ctx.stroke();
-    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
-    ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(0, y + 1); ctx.lineTo(tickLen, y + 1); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(canvas.width, y + 1); ctx.lineTo(canvas.width - tickLen, y + 1); ctx.stroke();
-    ctx.lineWidth = 2;
+    // Top & bottom ticks
+    for (let x = spacingPx; x < canvas.width; x += spacingPx) {
+      ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, tickLen); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x, canvas.height); ctx.lineTo(x, canvas.height - tickLen); ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+      ctx.lineWidth = 0.5;
+      ctx.beginPath(); ctx.moveTo(x + 1, 0); ctx.lineTo(x + 1, tickLen); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x + 1, canvas.height); ctx.lineTo(x + 1, canvas.height - tickLen); ctx.stroke();
+      ctx.lineWidth = 1.5;
+    }
+    // Left & right ticks
+    for (let y = spacingPx; y < canvas.height; y += spacingPx) {
+      ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(tickLen, y); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(canvas.width, y); ctx.lineTo(canvas.width - tickLen, y); ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+      ctx.lineWidth = 0.5;
+      ctx.beginPath(); ctx.moveTo(0, y + 1); ctx.lineTo(tickLen, y + 1); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(canvas.width, y + 1); ctx.lineTo(canvas.width - tickLen, y + 1); ctx.stroke();
+      ctx.lineWidth = 1.5;
+    }
   }
 
   if (!showGrid) return;
@@ -581,17 +658,16 @@ function drawGrid() {
 function drawRulers(pdfW, pdfH, spacingPx, spacingPt) {
   const rulerH = 28;
   const rulerW = 40;
-  const margin = 24; // matches canvas-wrapper margin
+  const margin = 24;
+  const fontSize = Math.max(9, 10 * zoom / 1.5);
 
-  // Top ruler
+  // --- Top ruler ---
   const topCanvas = document.getElementById('ruler-top');
   topCanvas.width = pdfW + margin * 2;
   topCanvas.height = rulerH;
   const tCtx = topCanvas.getContext('2d');
   tCtx.fillStyle = '#111';
   tCtx.fillRect(0, 0, topCanvas.width, topCanvas.height);
-
-  const fontSize = Math.max(9, 10 * zoom / 1.5);
   tCtx.font = `${fontSize}px DM Mono, monospace`;
   tCtx.fillStyle = '#ccc';
   tCtx.strokeStyle = '#555';
@@ -601,19 +677,39 @@ function drawRulers(pdfW, pdfH, spacingPx, spacingPt) {
   for (let x = spacingPx; x < pdfW; x += spacingPx) {
     const tx = x + margin;
     tCtx.beginPath(); tCtx.moveTo(tx, rulerH); tCtx.lineTo(tx, rulerH - 8); tCtx.stroke();
-    const text = `${fmtVal(i * ptToUnit(spacingPt))}`;
-    tCtx.fillText(text, tx + 2, rulerH - 12);
+    tCtx.fillStyle = '#ccc';
+    tCtx.fillText(`${fmtVal(i * ptToUnit(spacingPt))}`, tx + 2, rulerH - 12);
     i++;
   }
 
-  // Left ruler
+  // --- Bottom ruler ---
+  const botCanvas = document.getElementById('ruler-bottom');
+  botCanvas.width = pdfW + margin * 2;
+  botCanvas.height = rulerH;
+  const bCtx = botCanvas.getContext('2d');
+  bCtx.fillStyle = '#111';
+  bCtx.fillRect(0, 0, botCanvas.width, botCanvas.height);
+  bCtx.font = `${fontSize}px DM Mono, monospace`;
+  bCtx.fillStyle = '#ccc';
+  bCtx.strokeStyle = '#555';
+  bCtx.lineWidth = 0.5;
+
+  i = 1;
+  for (let x = spacingPx; x < pdfW; x += spacingPx) {
+    const tx = x + margin;
+    bCtx.beginPath(); bCtx.moveTo(tx, 0); bCtx.lineTo(tx, 8); bCtx.stroke();
+    bCtx.fillStyle = '#ccc';
+    bCtx.fillText(`${fmtVal(i * ptToUnit(spacingPt))}`, tx + 2, 20);
+    i++;
+  }
+
+  // --- Left ruler ---
   const leftCanvas = document.getElementById('ruler-left');
   leftCanvas.width = rulerW;
   leftCanvas.height = pdfH + margin * 2;
   const lCtx = leftCanvas.getContext('2d');
   lCtx.fillStyle = '#111';
   lCtx.fillRect(0, 0, leftCanvas.width, leftCanvas.height);
-
   lCtx.font = `${fontSize}px DM Mono, monospace`;
   lCtx.fillStyle = '#ccc';
   lCtx.strokeStyle = '#555';
@@ -625,7 +721,30 @@ function drawRulers(pdfW, pdfH, spacingPx, spacingPt) {
     lCtx.beginPath(); lCtx.moveTo(rulerW, ty); lCtx.lineTo(rulerW - 8, ty); lCtx.stroke();
     const text = `${fmtVal(i * ptToUnit(spacingPt))}`;
     const tw = lCtx.measureText(text).width;
+    lCtx.fillStyle = '#ccc';
     lCtx.fillText(text, rulerW - 10 - tw, ty + fontSize / 3);
+    i++;
+  }
+
+  // --- Right ruler ---
+  const rightCanvas = document.getElementById('ruler-right');
+  rightCanvas.width = rulerW;
+  rightCanvas.height = pdfH + margin * 2;
+  const rCtx = rightCanvas.getContext('2d');
+  rCtx.fillStyle = '#111';
+  rCtx.fillRect(0, 0, rightCanvas.width, rightCanvas.height);
+  rCtx.font = `${fontSize}px DM Mono, monospace`;
+  rCtx.fillStyle = '#ccc';
+  rCtx.strokeStyle = '#555';
+  rCtx.lineWidth = 0.5;
+
+  i = 1;
+  for (let y = spacingPx; y < pdfH; y += spacingPx) {
+    const ty = y + margin;
+    rCtx.beginPath(); rCtx.moveTo(0, ty); rCtx.lineTo(8, ty); rCtx.stroke();
+    const text = `${fmtVal(i * ptToUnit(spacingPt))}`;
+    rCtx.fillStyle = '#ccc';
+    rCtx.fillText(text, 10, ty + fontSize / 3);
     i++;
   }
 }
@@ -812,6 +931,12 @@ function setUnit(u) {
 function toggleGrid() {
   showGrid = !showGrid;
   document.getElementById('grid-btn').classList.toggle('active', showGrid);
+  drawGrid();
+}
+
+function toggleTicks() {
+  showTicks = !showTicks;
+  document.getElementById('tick-btn').classList.toggle('active', showTicks);
   drawGrid();
 }
 
