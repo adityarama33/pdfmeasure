@@ -611,8 +611,8 @@ function drawGrid() {
 
   // Edge tick marks on all four sides of the page
   if (showTicks) {
-    const tickLen = 8;
-    ctx.lineWidth = 1.5;
+    const tickLen = 12;
+    ctx.lineWidth = 2;
     ctx.setLineDash([]);
 
     // Top & bottom ticks
@@ -675,10 +675,10 @@ function drawRulers(pdfW, pdfH, spacingPx, spacingPt) {
   let i = 1;
   for (let x = spacingPx; x < pdfW; x += spacingPx) {
     const tx = x;
-    tCtx.strokeStyle = '#555';
+    tCtx.strokeStyle = '#888';
     tCtx.beginPath(); tCtx.moveTo(tx, rulerH); tCtx.lineTo(tx, rulerH - 12); tCtx.stroke();
     tCtx.fillStyle = '#ccc';
-    tCtx.fillText(`${fmtVal(i * ptToUnit(spacingPt))}`, tx + 3, rulerH - 14);
+    tCtx.fillText(`${fmtVal(i * ptToUnit(spacingPt))}`, tx + 3, rulerH - 13);
     i++;
   }
 
@@ -696,10 +696,10 @@ function drawRulers(pdfW, pdfH, spacingPx, spacingPt) {
 
   i = 1;
   for (let x = spacingPx; x < pdfW; x += spacingPx) {
-    bCtx.strokeStyle = '#555';
+    bCtx.strokeStyle = '#888';
     bCtx.beginPath(); bCtx.moveTo(x, 0); bCtx.lineTo(x, 12); bCtx.stroke();
     bCtx.fillStyle = '#ccc';
-    bCtx.fillText(`${fmtVal(i * ptToUnit(spacingPt))}`, x + 3, 24);
+    bCtx.fillText(`${fmtVal(i * ptToUnit(spacingPt))}`, x + 3, 14 + fontSize);
     i++;
   }
 
@@ -717,7 +717,7 @@ function drawRulers(pdfW, pdfH, spacingPx, spacingPt) {
 
   i = 1;
   for (let y = spacingPx; y < pdfH; y += spacingPx) {
-    lCtx.strokeStyle = '#555';
+    lCtx.strokeStyle = '#888';
     lCtx.beginPath(); lCtx.moveTo(rulerW, y); lCtx.lineTo(rulerW - 12, y); lCtx.stroke();
     const text = `${fmtVal(i * ptToUnit(spacingPt))}`;
     const tw = lCtx.measureText(text).width;
@@ -740,11 +740,11 @@ function drawRulers(pdfW, pdfH, spacingPx, spacingPt) {
 
   i = 1;
   for (let y = spacingPx; y < pdfH; y += spacingPx) {
-    rCtx.strokeStyle = '#555';
+    rCtx.strokeStyle = '#888';
     rCtx.beginPath(); rCtx.moveTo(0, y); rCtx.lineTo(12, y); rCtx.stroke();
     const text = `${fmtVal(i * ptToUnit(spacingPt))}`;
     rCtx.fillStyle = '#ccc';
-    rCtx.fillText(text, 10, ty + fontSize / 3);
+    rCtx.fillText(text, 14, y + fontSize / 3);
     i++;
   }
 }
