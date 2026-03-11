@@ -404,6 +404,66 @@
   }
   .zoom-btn:hover { border-color: var(--accent); color: var(--accent); }
   #zoom-label { font-size: 12px; font-family: 'DM Mono', monospace; color: var(--muted); min-width: 40px; text-align: center; }
+
+  /* Tick settings popover */
+  .tick-wrapper { position: relative; }
+  #tick-popover {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    margin-top: 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    z-index: 100;
+    width: 220px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+  }
+  #tick-popover.open { display: block; }
+  .tick-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    font-size: 11px;
+    font-family: 'DM Mono', monospace;
+    color: var(--muted);
+  }
+  .tick-row:last-child { margin-bottom: 0; }
+  .tick-row label { color: var(--text); font-size: 11px; }
+  .tick-pills {
+    display: flex;
+    gap: 4px;
+  }
+  .tick-pill {
+    padding: 3px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    font-size: 10px;
+    font-family: 'DM Mono', monospace;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .tick-pill:hover { border-color: var(--accent); color: var(--accent); }
+  .tick-pill.active { background: var(--accent); color: #000; border-color: var(--accent); }
+  .tick-input {
+    width: 60px;
+    padding: 3px 6px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 11px;
+    font-family: 'DM Mono', monospace;
+    text-align: right;
+  }
+  .tick-input:focus { outline: none; border-color: var(--accent); }
+  .tick-unit { color: var(--muted); font-size: 10px; margin-left: 4px; }
 </style>
 </head>
 <body>
@@ -435,10 +495,33 @@
       ✏️ Draw Line
     </button>
 
-    <!-- Tick marks toggle -->
-    <button class="tool-btn active" id="tick-btn" onclick="toggleTicks()">
-      ┼ Ticks
-    </button>
+    <!-- Tick marks settings -->
+    <div class="tick-wrapper">
+      <button class="tool-btn active" id="tick-btn" onclick="toggleTicks()">
+        ┼ Ticks
+      </button>
+      <button class="tool-btn" id="tick-settings-btn" onclick="toggleTickPopover()" style="padding:4px 6px;font-size:10px;">▾</button>
+      <div id="tick-popover">
+        <div class="tick-row">
+          <label>Length</label>
+          <div class="tick-pills">
+            <button class="tick-pill" data-tick-mode="small" onclick="setTickMode('small')">S</button>
+            <button class="tick-pill active" data-tick-mode="medium" onclick="setTickMode('medium')">M</button>
+            <button class="tick-pill" data-tick-mode="full" onclick="setTickMode('full')">Full</button>
+          </div>
+        </div>
+        <div class="tick-row">
+          <label>Spacing</label>
+          <div style="display:flex;align-items:center;">
+            <input type="text" class="tick-input" id="tick-spacing-input" placeholder="auto" oninput="setTickSpacing(this.value)">
+            <span class="tick-unit" id="tick-unit-label">cm</span>
+          </div>
+        </div>
+        <div class="tick-row" style="color:var(--muted);font-size:9px;">
+          Leave spacing empty for auto (matches grid)
+        </div>
+      </div>
+    </div>
 
     <div class="divider"></div>
 
@@ -519,6 +602,8 @@ let zoom = 1.5;
 let unit = 'cm';
 let showGrid = true;
 let showTicks = true;
+let tickMode = 'medium'; // 'small', 'medium', 'full'
+let tickSpacingCustom = null; // null = match grid, or value in current unit
 let rulerMode = false;
 let lineDrawMode = false;
 let rulerStart = null;
@@ -611,31 +696,56 @@ function drawGrid() {
 
   // Edge tick marks on all four sides of the page
   if (showTicks) {
-    const tickLen = 12;
-    ctx.lineWidth = 2;
+    // Custom spacing or match grid
+    let tickSpPx = spacingPx;
+    if (tickSpacingCustom !== null) {
+      const ptPerUnit = 1 / PT_TO[unit];
+      tickSpPx = tickSpacingCustom * ptPerUnit * zoom;
+    }
+
+    const isFull = tickMode === 'full';
+    const tickLenH = isFull ? canvas.height : tickMode === 'medium' ? 12 : 6;
+    const tickLenW = isFull ? canvas.width : tickMode === 'medium' ? 12 : 6;
+    const lw = isFull ? 0.5 : 1.5;
+    const alpha = isFull ? 0.35 : 0.8;
+
     ctx.setLineDash([]);
 
-    // Top & bottom ticks
-    for (let x = spacingPx; x < canvas.width; x += spacingPx) {
-      ctx.strokeStyle = 'rgba(0,0,0,0.8)';
-      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, tickLen); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(x, canvas.height); ctx.lineTo(x, canvas.height - tickLen); ctx.stroke();
-      ctx.strokeStyle = 'rgba(255,255,255,0.5)';
-      ctx.lineWidth = 0.5;
-      ctx.beginPath(); ctx.moveTo(x + 1, 0); ctx.lineTo(x + 1, tickLen); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(x + 1, canvas.height); ctx.lineTo(x + 1, canvas.height - tickLen); ctx.stroke();
-      ctx.lineWidth = 1.5;
+    // Vertical ticks (top & bottom, or full height)
+    for (let x = tickSpPx; x < canvas.width; x += tickSpPx) {
+      ctx.strokeStyle = `rgba(0,0,0,${alpha})`;
+      ctx.lineWidth = lw;
+      if (isFull) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+        ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+        ctx.lineWidth = 0.3;
+        ctx.beginPath(); ctx.moveTo(x + 1, 0); ctx.lineTo(x + 1, canvas.height); ctx.stroke();
+      } else {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, tickLenH); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(x, canvas.height); ctx.lineTo(x, canvas.height - tickLenH); ctx.stroke();
+        ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+        ctx.lineWidth = 0.5;
+        ctx.beginPath(); ctx.moveTo(x + 1, 0); ctx.lineTo(x + 1, tickLenH); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(x + 1, canvas.height); ctx.lineTo(x + 1, canvas.height - tickLenH); ctx.stroke();
+      }
     }
-    // Left & right ticks
-    for (let y = spacingPx; y < canvas.height; y += spacingPx) {
-      ctx.strokeStyle = 'rgba(0,0,0,0.8)';
-      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(tickLen, y); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(canvas.width, y); ctx.lineTo(canvas.width - tickLen, y); ctx.stroke();
-      ctx.strokeStyle = 'rgba(255,255,255,0.5)';
-      ctx.lineWidth = 0.5;
-      ctx.beginPath(); ctx.moveTo(0, y + 1); ctx.lineTo(tickLen, y + 1); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(canvas.width, y + 1); ctx.lineTo(canvas.width - tickLen, y + 1); ctx.stroke();
-      ctx.lineWidth = 1.5;
+    // Horizontal ticks (left & right, or full width)
+    for (let y = tickSpPx; y < canvas.height; y += tickSpPx) {
+      ctx.strokeStyle = `rgba(0,0,0,${alpha})`;
+      ctx.lineWidth = lw;
+      if (isFull) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+        ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+        ctx.lineWidth = 0.3;
+        ctx.beginPath(); ctx.moveTo(0, y + 1); ctx.lineTo(canvas.width, y + 1); ctx.stroke();
+      } else {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(tickLenW, y); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(canvas.width, y); ctx.lineTo(canvas.width - tickLenW, y); ctx.stroke();
+        ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+        ctx.lineWidth = 0.5;
+        ctx.beginPath(); ctx.moveTo(0, y + 1); ctx.lineTo(tickLenW, y + 1); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(canvas.width, y + 1); ctx.lineTo(canvas.width - tickLenW, y + 1); ctx.stroke();
+      }
     }
   }
 
@@ -925,6 +1035,8 @@ function setUnit(u) {
   document.querySelectorAll('[data-unit]').forEach(el => {
     el.classList.toggle('active', el.dataset.unit === u);
   });
+  const tickUnitLabel = document.getElementById('tick-unit-label');
+  if (tickUnitLabel) tickUnitLabel.textContent = u;
   if (pdfDoc) { drawGrid(); drawMeasurements(); }
 }
 
@@ -939,6 +1051,32 @@ function toggleTicks() {
   document.getElementById('tick-btn').classList.toggle('active', showTicks);
   drawGrid();
 }
+
+function toggleTickPopover() {
+  document.getElementById('tick-popover').classList.toggle('open');
+}
+
+function setTickMode(mode) {
+  tickMode = mode;
+  document.querySelectorAll('[data-tick-mode]').forEach(el => {
+    el.classList.toggle('active', el.dataset.tickMode === mode);
+  });
+  drawGrid();
+}
+
+function setTickSpacing(val) {
+  const num = parseFloat(val);
+  tickSpacingCustom = (isNaN(num) || num <= 0) ? null : num;
+  drawGrid();
+}
+
+// Close popover when clicking outside
+document.addEventListener('click', e => {
+  const popover = document.getElementById('tick-popover');
+  if (!popover) return;
+  const wrapper = e.target.closest('.tick-wrapper');
+  if (!wrapper) popover.classList.remove('open');
+});
 
 function toggleRuler() {
   rulerMode = !rulerMode;
