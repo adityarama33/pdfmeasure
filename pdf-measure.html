@@ -490,19 +490,28 @@ function drawGrid() {
   }
 
   // Labels
-  ctx.fillStyle = 'rgba(232,255,71,0.5)';
-  ctx.font = `${Math.max(8, 9*zoom/1.5)}px DM Mono, monospace`;
+  const fontSize = Math.max(8, 9*zoom/1.5);
+  ctx.font = `${fontSize}px DM Mono, monospace`;
   let i = 1;
   for (let x = spacingPx; x < canvas.width - 10; x += spacingPx) {
-    ctx.fillText(`${fmtVal(i * ptToUnit(spacingPt))}${UNIT_LABEL[unit]}`, x + 3, 10);
+    const text = `${fmtVal(i * ptToUnit(spacingPt))}${UNIT_LABEL[unit]}`;
+    const tw = ctx.measureText(text).width;
+    const tx = x + 3, ty = 10;
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillRect(tx - 2, ty - fontSize, tw + 4, fontSize + 4);
+    ctx.fillStyle = '#e8ff47';
+    ctx.fillText(text, tx, ty);
     i++;
   }
   i = 1;
   for (let y = spacingPx; y < canvas.height - 10; y += spacingPx) {
-    ctx.save();
-    ctx.translate(10, y - 3);
-    ctx.fillText(`${fmtVal(i * ptToUnit(spacingPt))}${UNIT_LABEL[unit]}`, 0, 0);
-    ctx.restore();
+    const text = `${fmtVal(i * ptToUnit(spacingPt))}${UNIT_LABEL[unit]}`;
+    const tw = ctx.measureText(text).width;
+    const tx = 3, ty = y - 3;
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillRect(tx - 2, ty - fontSize, tw + 4, fontSize + 4);
+    ctx.fillStyle = '#e8ff47';
+    ctx.fillText(text, tx, ty);
     i++;
   }
 }
