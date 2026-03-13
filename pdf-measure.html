@@ -839,6 +839,17 @@
           </div>
         </div>
         <div class="tile-form-row">
+          <label>Print size (mm)</label>
+          <div style="display:flex;align-items:center;gap:4px;">
+            <input class="tick-input" id="tile-print-w" style="width:50px" oninput="updateTilePreview()">
+            <span style="color:var(--muted)">x</span>
+            <input class="tick-input" id="tile-print-h" style="width:50px" oninput="updateTilePreview()">
+          </div>
+        </div>
+        <div style="font-size:9px;font-family:'DM Mono',monospace;color:var(--muted);margin-top:-8px;">
+          Size of each copy on the sheet. Change to scale up or down.
+        </div>
+        <div class="tile-form-row">
           <label>Horizontal align</label>
           <div class="tick-pills">
             <button class="tick-pill active" data-alignh="left" onclick="setTileAlignH('left')">Left</button>
@@ -1646,6 +1657,8 @@ function openTilePanel() {
   const srcH = (pageHeightPt * PT_TO.mm).toFixed(1);
   document.getElementById('tile-src-w').value = srcW;
   document.getElementById('tile-src-h').value = srcH;
+  document.getElementById('tile-print-w').value = srcW;
+  document.getElementById('tile-print-h').value = srcH;
   updateTilePreview();
 }
 
@@ -1719,17 +1732,20 @@ function computeTileLayout() {
   const gap = parseFloat(document.getElementById('tile-gap').value) || 0;
   const srcW = parseFloat(document.getElementById('tile-src-w').value) || (pageWidthPt * PT_TO.mm);
   const srcH = parseFloat(document.getElementById('tile-src-h').value) || (pageHeightPt * PT_TO.mm);
+  // Print size = size of each copy on the sheet (may differ from source for scaling)
+  const printW = parseFloat(document.getElementById('tile-print-w').value) || srcW;
+  const printH = parseFloat(document.getElementById('tile-print-h').value) || srcH;
   const usableW = sheet.w - 2 * margin;
   const usableH = sheet.h - 2 * margin;
-  const cols = Math.max(0, Math.floor((usableW + gap) / (srcW + gap)));
-  const rows = Math.max(0, Math.floor((usableH + gap) / (srcH + gap)));
-  const gridW = cols > 0 ? cols * srcW + (cols - 1) * gap : 0;
-  const gridH = rows > 0 ? rows * srcH + (rows - 1) * gap : 0;
+  const cols = Math.max(0, Math.floor((usableW + gap) / (printW + gap)));
+  const rows = Math.max(0, Math.floor((usableH + gap) / (printH + gap)));
+  const gridW = cols > 0 ? cols * printW + (cols - 1) * gap : 0;
+  const gridH = rows > 0 ? rows * printH + (rows - 1) * gap : 0;
   const extraW = usableW - gridW;
   const extraH = usableH - gridH;
   const offsetX = tileAlignH === 'center' ? extraW / 2 : tileAlignH === 'right' ? extraW : 0;
   const offsetY = tileAlignV === 'middle' ? extraH / 2 : tileAlignV === 'bottom' ? extraH : 0;
-  return { sheet, margin, gap, srcW, srcH, cols, rows, total: cols * rows, offsetX, offsetY };
+  return { sheet, margin, gap, srcW, srcH, printW, printH, cols, rows, total: cols * rows, offsetX, offsetY };
 }
 
 function updateTilePreview() {
@@ -1745,7 +1761,7 @@ function updateTilePreview() {
   if (!sizeChanged) tileTrimBleed = false;
 
   const layout = computeTileLayout();
-  const { sheet, margin, gap, srcW, srcH, cols, rows, total } = layout;
+  const { sheet, margin, gap, printW, printH, cols, rows, total } = layout;
 
   // Update summary
   const sumEl = document.getElementById('tile-summary');
@@ -1778,8 +1794,8 @@ function updateTilePreview() {
 
   // Draw copies
   const gS = gap * scale;
-  const cW = srcW * scale;
-  const cH = srcH * scale;
+  const cW = printW * scale;
+  const cH = printH * scale;
   const oX = layout.offsetX * scale;
   const oY = layout.offsetY * scale;
 
@@ -1865,8 +1881,8 @@ async function generateTiledPDF() {
   const sheetHPt = layout.sheet.h * mmToPt;
   const marginPt = layout.margin * mmToPt;
   const gapPt = layout.gap * mmToPt;
-  const srcWPt = layout.srcW * mmToPt;
-  const srcHPt = layout.srcH * mmToPt;
+  const printWPt = layout.printW * mmToPt;
+  const printHPt = layout.printH * mmToPt;
 
   const page = newDoc.addPage([sheetWPt, sheetHPt]);
 
@@ -1874,12 +1890,12 @@ async function generateTiledPDF() {
   const oXPt = layout.offsetX * mmToPt;
   const oYPt = layout.offsetY * mmToPt;
 
-  // Place all copies
+  // Place all copies (scaled to print size)
   for (let row = 0; row < layout.rows; row++) {
     for (let col = 0; col < layout.cols; col++) {
-      const x = marginPt + oXPt + col * (srcWPt + gapPt);
-      const y = sheetHPt - marginPt - oYPt - (row + 1) * srcHPt - row * gapPt;
-      page.drawPage(embeddedPage, { x, y, width: srcWPt, height: srcHPt });
+      const x = marginPt + oXPt + col * (printWPt + gapPt);
+      const y = sheetHPt - marginPt - oYPt - (row + 1) * printHPt - row * gapPt;
+      page.drawPage(embeddedPage, { x, y, width: printWPt, height: printHPt });
     }
   }
 
@@ -1887,20 +1903,20 @@ async function generateTiledPDF() {
   if (tileCropMarks && layout.total > 0) {
     const black = rgb(0, 0, 0);
     const lw = 0.5;
-    const gridBottom = sheetHPt - marginPt - oYPt - layout.rows * srcHPt - (layout.rows - 1) * gapPt;
+    const gridBottom = sheetHPt - marginPt - oYPt - layout.rows * printHPt - (layout.rows - 1) * gapPt;
     const gridTop = sheetHPt - marginPt - oYPt;
     const gridLeft = marginPt + oXPt;
-    const gridRight = marginPt + oXPt + layout.cols * srcWPt + (layout.cols - 1) * gapPt;
+    const gridRight = marginPt + oXPt + layout.cols * printWPt + (layout.cols - 1) * gapPt;
 
     // Vertical cut lines
     for (let c = 0; c <= layout.cols; c++) {
       if (c < layout.cols) {
-        const xl = marginPt + oXPt + c * (srcWPt + gapPt);
+        const xl = marginPt + oXPt + c * (printWPt + gapPt);
         page.drawLine({ start: { x: xl, y: sheetHPt }, end: { x: xl, y: gridTop }, thickness: lw, color: black });
         page.drawLine({ start: { x: xl, y: gridBottom }, end: { x: xl, y: 0 }, thickness: lw, color: black });
       }
       if (c > 0) {
-        const xr = marginPt + oXPt + c * srcWPt + (c - 1) * gapPt;
+        const xr = marginPt + oXPt + c * printWPt + (c - 1) * gapPt;
         page.drawLine({ start: { x: xr, y: sheetHPt }, end: { x: xr, y: gridTop }, thickness: lw, color: black });
         page.drawLine({ start: { x: xr, y: gridBottom }, end: { x: xr, y: 0 }, thickness: lw, color: black });
       }
@@ -1909,12 +1925,12 @@ async function generateTiledPDF() {
     // Horizontal cut lines
     for (let r = 0; r <= layout.rows; r++) {
       if (r < layout.rows) {
-        const yt = sheetHPt - marginPt - oYPt - r * (srcHPt + gapPt);
+        const yt = sheetHPt - marginPt - oYPt - r * (printHPt + gapPt);
         page.drawLine({ start: { x: 0, y: yt }, end: { x: gridLeft, y: yt }, thickness: lw, color: black });
         page.drawLine({ start: { x: gridRight, y: yt }, end: { x: sheetWPt, y: yt }, thickness: lw, color: black });
       }
       if (r > 0) {
-        const yb = sheetHPt - marginPt - oYPt - r * srcHPt - (r - 1) * gapPt;
+        const yb = sheetHPt - marginPt - oYPt - r * printHPt - (r - 1) * gapPt;
         page.drawLine({ start: { x: 0, y: yb }, end: { x: gridLeft, y: yb }, thickness: lw, color: black });
         page.drawLine({ start: { x: gridRight, y: yb }, end: { x: sheetWPt, y: yb }, thickness: lw, color: black });
       }
