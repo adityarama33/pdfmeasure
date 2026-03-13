@@ -1027,13 +1027,17 @@ function drawRulers(pdfW, pdfH, spacingPx, spacingPt) {
   tCtx.strokeStyle = '#555';
   tCtx.lineWidth = 0.5;
 
+  tCtx.textAlign = 'center';
+  tCtx.textBaseline = 'alphabetic';
   let i = 1;
   for (let x = spacingPx; x < pdfW; x += spacingPx) {
-    const tx = x;
     tCtx.strokeStyle = '#888';
-    tCtx.beginPath(); tCtx.moveTo(tx, rulerH); tCtx.lineTo(tx, rulerH - 12); tCtx.stroke();
+    tCtx.beginPath(); tCtx.moveTo(x, rulerH); tCtx.lineTo(x, rulerH - 12); tCtx.stroke();
     tCtx.fillStyle = '#ccc';
-    tCtx.fillText(`${fmtVal(i * ptToUnit(spacingPt))}`, tx + 3, rulerH - 13);
+    const label = fmtVal(i * ptToUnit(spacingPt));
+    const tw = tCtx.measureText(label).width;
+    const lx = Math.min(x, pdfW - tw / 2 - 2);
+    tCtx.fillText(label, Math.max(tw / 2 + 2, lx), rulerH - 13);
     i++;
   }
 
@@ -1051,12 +1055,17 @@ function drawRulers(pdfW, pdfH, spacingPx, spacingPt) {
   bCtx.strokeStyle = '#555';
   bCtx.lineWidth = 0.5;
 
+  bCtx.textAlign = 'center';
+  bCtx.textBaseline = 'top';
   i = 1;
   for (let x = spacingPx; x < pdfW; x += spacingPx) {
     bCtx.strokeStyle = '#888';
     bCtx.beginPath(); bCtx.moveTo(x, 0); bCtx.lineTo(x, 12); bCtx.stroke();
     bCtx.fillStyle = '#ccc';
-    bCtx.fillText(`${fmtVal(i * ptToUnit(spacingPt))}`, x + 3, 14 + fontSize);
+    const label = fmtVal(i * ptToUnit(spacingPt));
+    const tw = bCtx.measureText(label).width;
+    const lx = Math.min(x, pdfW - tw / 2 - 2);
+    bCtx.fillText(label, Math.max(tw / 2 + 2, lx), 14 + fontSize);
     i++;
   }
 
@@ -1074,14 +1083,16 @@ function drawRulers(pdfW, pdfH, spacingPx, spacingPt) {
   lCtx.strokeStyle = '#555';
   lCtx.lineWidth = 0.5;
 
+  lCtx.textAlign = 'right';
+  lCtx.textBaseline = 'middle';
   i = 1;
   for (let y = spacingPx; y < pdfH; y += spacingPx) {
     lCtx.strokeStyle = '#888';
     lCtx.beginPath(); lCtx.moveTo(rulerW, y); lCtx.lineTo(rulerW - 12, y); lCtx.stroke();
-    const text = `${fmtVal(i * ptToUnit(spacingPt))}`;
-    const tw = lCtx.measureText(text).width;
+    const text = fmtVal(i * ptToUnit(spacingPt));
     lCtx.fillStyle = '#ccc';
-    lCtx.fillText(text, rulerW - 14 - tw, y + fontSize / 3);
+    const ly = Math.max(fontSize / 2 + 2, Math.min(y, pdfH - fontSize / 2 - 2));
+    lCtx.fillText(text, rulerW - 14, ly);
     i++;
   }
 
@@ -1099,13 +1110,16 @@ function drawRulers(pdfW, pdfH, spacingPx, spacingPt) {
   rCtx.strokeStyle = '#555';
   rCtx.lineWidth = 0.5;
 
+  rCtx.textAlign = 'left';
+  rCtx.textBaseline = 'middle';
   i = 1;
   for (let y = spacingPx; y < pdfH; y += spacingPx) {
     rCtx.strokeStyle = '#888';
     rCtx.beginPath(); rCtx.moveTo(0, y); rCtx.lineTo(12, y); rCtx.stroke();
-    const text = `${fmtVal(i * ptToUnit(spacingPt))}`;
+    const text = fmtVal(i * ptToUnit(spacingPt));
     rCtx.fillStyle = '#ccc';
-    rCtx.fillText(text, 14, y + fontSize / 3);
+    const ly = Math.max(fontSize / 2 + 2, Math.min(y, pdfH - fontSize / 2 - 2));
+    rCtx.fillText(text, 14, ly);
     i++;
   }
 }
