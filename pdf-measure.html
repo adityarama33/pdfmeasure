@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PDF Measure Tool</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap');
 
@@ -461,6 +462,107 @@
   .tick-input:focus { outline: none; border-color: var(--accent); }
   .tick-unit { color: var(--muted); font-size: 10px; margin-left: 4px; }
 
+  /* Tile modal */
+  #tile-modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 500;
+    background: rgba(0,0,0,0.7);
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(4px);
+  }
+  #tile-modal.open { display: flex; }
+
+  .tile-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    max-width: 740px;
+    width: 95%;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+  .tile-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .tile-header h3 {
+    font-size: 16px;
+    font-weight: 700;
+    margin: 0;
+  }
+  .tile-body {
+    display: flex;
+    gap: 20px;
+    padding: 20px;
+  }
+  .tile-form {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .tile-form-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .tile-form-row label {
+    font-size: 12px;
+    font-family: 'DM Mono', monospace;
+    color: var(--text);
+    white-space: nowrap;
+  }
+  .tile-form-row select {
+    padding: 4px 8px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 11px;
+    font-family: 'DM Mono', monospace;
+  }
+  .tile-form-row select:focus { outline: none; border-color: var(--accent); }
+  .tile-summary {
+    padding: 10px 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 13px;
+    font-family: 'DM Mono', monospace;
+    color: var(--accent);
+    text-align: center;
+    font-weight: 500;
+  }
+  .tile-preview-area {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 260px;
+  }
+  #tile-preview-canvas {
+    background: #fff;
+    border-radius: 4px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+  }
+  .tile-footer {
+    padding: 16px 20px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+  }
+  .tile-export-btn {
+    padding: 10px 24px;
+    font-size: 13px;
+  }
+
   /* Mobile */
   @media (max-width: 768px) {
     header {
@@ -499,6 +601,8 @@
     .zoom-controls { gap: 4px; }
     .zoom-btn { width: 24px; height: 24px; font-size: 12px; }
     #zoom-label { font-size: 10px; min-width: 32px; }
+    .tile-body { flex-direction: column; }
+    .tile-preview-area { min-width: unset; }
   }
 </style>
 </head>
@@ -571,6 +675,12 @@
     <div class="divider"></div>
 
     <!-- New file -->
+    <button class="tool-btn" id="tile-btn" onclick="openTilePanel()">
+      🖨 Tile for Print
+    </button>
+
+    <div class="divider"></div>
+
     <button class="tool-btn" onclick="document.getElementById('file-input').click()">↑ New File</button>
   </div>
 </header>
@@ -627,6 +737,69 @@
 </div>
 
 <div id="measure-tooltip"></div>
+<!-- Tile for Print modal -->
+<div id="tile-modal" onclick="if(event.target===this)closeTilePanel()">
+  <div class="tile-panel">
+    <div class="tile-header">
+      <h3>Tile for Print</h3>
+      <button class="tool-btn" onclick="closeTilePanel()">✕</button>
+    </div>
+    <div class="tile-body">
+      <div class="tile-form">
+        <div class="tile-form-row">
+          <label>Sheet size</label>
+          <select id="tile-sheet-size" onchange="onTileSheetChange()">
+            <option value="A4">A4 (210 x 297 mm)</option>
+            <option value="A3">A3 (297 x 420 mm)</option>
+            <option value="Letter">Letter (215.9 x 279.4 mm)</option>
+            <option value="custom">Custom...</option>
+          </select>
+        </div>
+        <div class="tile-form-row">
+          <label>Orientation</label>
+          <div class="tick-pills">
+            <button class="tick-pill active" data-orient="portrait" onclick="setTileOrientation('portrait')">Portrait</button>
+            <button class="tick-pill" data-orient="landscape" onclick="setTileOrientation('landscape')">Landscape</button>
+          </div>
+        </div>
+        <div class="tile-form-row" id="tile-custom-dims" style="display:none">
+          <label>W x H (mm)</label>
+          <div style="display:flex;align-items:center;gap:4px;">
+            <input class="tick-input" id="tile-custom-w" value="210" style="width:50px" oninput="updateTilePreview()">
+            <span style="color:var(--muted)">x</span>
+            <input class="tick-input" id="tile-custom-h" value="297" style="width:50px" oninput="updateTilePreview()">
+          </div>
+        </div>
+        <div class="tile-form-row">
+          <label>Gap between copies (mm)</label>
+          <input class="tick-input" id="tile-gap" value="2" style="width:50px" oninput="updateTilePreview()">
+        </div>
+        <div class="tile-form-row">
+          <label>Sheet margin (mm)</label>
+          <input class="tick-input" id="tile-margin" value="5" style="width:50px" oninput="updateTilePreview()">
+        </div>
+        <div class="tile-form-row">
+          <label>Crop marks</label>
+          <div class="tick-pills">
+            <button class="tick-pill" data-crop="off" onclick="setTileCropMarks(false)">Off</button>
+            <button class="tick-pill active" data-crop="on" onclick="setTileCropMarks(true)">On</button>
+          </div>
+        </div>
+        <div class="tile-summary" id="tile-summary">—</div>
+        <div style="font-size:10px;font-family:'DM Mono',monospace;color:var(--muted);">
+          Source: <span id="tile-src-info">—</span>
+        </div>
+      </div>
+      <div class="tile-preview-area">
+        <canvas id="tile-preview-canvas" width="260" height="360"></canvas>
+      </div>
+    </div>
+    <div class="tile-footer">
+      <button class="upload-btn tile-export-btn" onclick="exportTiledPDF()">Export tiled PDF</button>
+    </div>
+  </div>
+</div>
+
 <input type="file" id="file-input" accept=".pdf">
 
 <script>
@@ -647,6 +820,7 @@ let lineStart = null;
 let measurements = [];
 let drawnLines = [];
 let currentMousePos = null;
+let pdfRawBytes = null;
 let shiftHeld = false;
 
 const PT_TO = { cm: 0.03527778, mm: 0.352778, in: 0.013889, px: 1.333333 };
@@ -674,6 +848,7 @@ function detectFormat(wPt, hPt) {
 
 async function loadPDF(file) {
   const arrayBuffer = await file.arrayBuffer();
+  pdfRawBytes = new Uint8Array(arrayBuffer);
   pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
   const page = await pdfDoc.getPage(1);
   const vp = page.getViewport({ scale: 1 });
@@ -1287,6 +1462,235 @@ document.addEventListener('keyup', e => {
   if (e.key === 'Shift') { shiftHeld = false; if (lineDrawMode) drawMeasurements(); }
 });
 
+// ========== TILE FOR PRINT ==========
+
+const SHEET_SIZES_MM = {
+  A4: { w: 210, h: 297 },
+  A3: { w: 297, h: 420 },
+  Letter: { w: 215.9, h: 279.4 },
+};
+
+let tileOrientation = 'portrait';
+let tileCropMarks = true;
+
+function openTilePanel() {
+  if (!pdfDoc) return;
+  document.getElementById('tile-modal').classList.add('open');
+  const srcW = (pageWidthPt * PT_TO.mm).toFixed(1);
+  const srcH = (pageHeightPt * PT_TO.mm).toFixed(1);
+  document.getElementById('tile-src-info').textContent = `${srcW} x ${srcH} mm`;
+  updateTilePreview();
+}
+
+function closeTilePanel() {
+  document.getElementById('tile-modal').classList.remove('open');
+}
+
+function onTileSheetChange() {
+  const val = document.getElementById('tile-sheet-size').value;
+  document.getElementById('tile-custom-dims').style.display = val === 'custom' ? 'flex' : 'none';
+  updateTilePreview();
+}
+
+function setTileOrientation(orient) {
+  tileOrientation = orient;
+  document.querySelectorAll('[data-orient]').forEach(el => {
+    el.classList.toggle('active', el.dataset.orient === orient);
+  });
+  updateTilePreview();
+}
+
+function setTileCropMarks(on) {
+  tileCropMarks = on;
+  document.querySelectorAll('[data-crop]').forEach(el => {
+    el.classList.toggle('active', (el.dataset.crop === 'on') === on);
+  });
+  updateTilePreview();
+}
+
+function getSheetDimsMM() {
+  const sel = document.getElementById('tile-sheet-size').value;
+  let w, h;
+  if (sel === 'custom') {
+    w = parseFloat(document.getElementById('tile-custom-w').value) || 210;
+    h = parseFloat(document.getElementById('tile-custom-h').value) || 297;
+  } else {
+    const s = SHEET_SIZES_MM[sel];
+    w = s.w; h = s.h;
+  }
+  if (tileOrientation === 'landscape') { const tmp = w; w = h; h = tmp; }
+  return { w, h };
+}
+
+function computeTileLayout() {
+  const sheet = getSheetDimsMM();
+  const margin = parseFloat(document.getElementById('tile-margin').value) || 0;
+  const gap = parseFloat(document.getElementById('tile-gap').value) || 0;
+  const srcW = pageWidthPt * PT_TO.mm;
+  const srcH = pageHeightPt * PT_TO.mm;
+  const usableW = sheet.w - 2 * margin;
+  const usableH = sheet.h - 2 * margin;
+  const cols = Math.max(0, Math.floor((usableW + gap) / (srcW + gap)));
+  const rows = Math.max(0, Math.floor((usableH + gap) / (srcH + gap)));
+  return { sheet, margin, gap, srcW, srcH, cols, rows, total: cols * rows };
+}
+
+function updateTilePreview() {
+  if (!pdfDoc) return;
+  const layout = computeTileLayout();
+  const { sheet, margin, gap, srcW, srcH, cols, rows, total } = layout;
+
+  // Update summary
+  const sumEl = document.getElementById('tile-summary');
+  if (total === 0) {
+    sumEl.textContent = 'Source is too large for this sheet';
+    sumEl.style.color = 'var(--danger, #ff6b6b)';
+  } else {
+    sumEl.textContent = `${cols} x ${rows} = ${total} copies per sheet`;
+    sumEl.style.color = 'var(--accent)';
+  }
+
+  // Draw preview
+  const canvas = document.getElementById('tile-preview-canvas');
+  const maxW = 260, maxH = 360;
+  const scale = Math.min(maxW / sheet.w, maxH / sheet.h);
+  canvas.width = Math.round(sheet.w * scale);
+  canvas.height = Math.round(sheet.h * scale);
+
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Margin area
+  const mS = margin * scale;
+  ctx.strokeStyle = '#ccc';
+  ctx.lineWidth = 0.5;
+  ctx.setLineDash([4, 3]);
+  ctx.strokeRect(mS, mS, canvas.width - 2 * mS, canvas.height - 2 * mS);
+  ctx.setLineDash([]);
+
+  // Draw copies
+  const gS = gap * scale;
+  const cW = srcW * scale;
+  const cH = srcH * scale;
+  const cropLen = 3 * scale; // 3mm
+  const cropOff = 1 * scale; // 1mm offset
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const x = mS + c * (cW + gS);
+      const y = mS + r * (cH + gS);
+
+      // Copy rectangle
+      ctx.fillStyle = '#f0ece4';
+      ctx.fillRect(x, y, cW, cH);
+      ctx.strokeStyle = '#bbb';
+      ctx.lineWidth = 0.5;
+      ctx.strokeRect(x, y, cW, cH);
+
+      // Crop marks
+      if (tileCropMarks) {
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 0.5;
+        // Top-left
+        ctx.beginPath();
+        ctx.moveTo(x - cropOff - cropLen, y); ctx.lineTo(x - cropOff, y); ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(x, y - cropOff - cropLen); ctx.lineTo(x, y - cropOff); ctx.stroke();
+        // Top-right
+        ctx.beginPath();
+        ctx.moveTo(x + cW + cropOff, y); ctx.lineTo(x + cW + cropOff + cropLen, y); ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(x + cW, y - cropOff - cropLen); ctx.lineTo(x + cW, y - cropOff); ctx.stroke();
+        // Bottom-left
+        ctx.beginPath();
+        ctx.moveTo(x - cropOff - cropLen, y + cH); ctx.lineTo(x - cropOff, y + cH); ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(x, y + cH + cropOff); ctx.lineTo(x, y + cH + cropOff + cropLen); ctx.stroke();
+        // Bottom-right
+        ctx.beginPath();
+        ctx.moveTo(x + cW + cropOff, y + cH); ctx.lineTo(x + cW + cropOff + cropLen, y + cH); ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(x + cW, y + cH + cropOff); ctx.lineTo(x + cW, y + cH + cropOff + cropLen); ctx.stroke();
+      }
+    }
+  }
+}
+
+async function exportTiledPDF() {
+  const layout = computeTileLayout();
+  if (layout.total === 0) return;
+
+  const { PDFDocument, rgb } = PDFLib;
+  const srcDoc = await PDFDocument.load(pdfRawBytes);
+  const newDoc = await PDFDocument.create();
+  const [embeddedPage] = await newDoc.embedPdf(srcDoc, [0]);
+
+  const mmToPt = 2.83465;
+  const sheetWPt = layout.sheet.w * mmToPt;
+  const sheetHPt = layout.sheet.h * mmToPt;
+  const marginPt = layout.margin * mmToPt;
+  const gapPt = layout.gap * mmToPt;
+  const srcWPt = layout.srcW * mmToPt;
+  const srcHPt = layout.srcH * mmToPt;
+
+  const page = newDoc.addPage([sheetWPt, sheetHPt]);
+
+  for (let row = 0; row < layout.rows; row++) {
+    for (let col = 0; col < layout.cols; col++) {
+      const x = marginPt + col * (srcWPt + gapPt);
+      const y = sheetHPt - marginPt - (row + 1) * srcHPt - row * gapPt;
+
+      page.drawPage(embeddedPage, { x, y, width: srcWPt, height: srcHPt });
+
+      if (tileCropMarks) {
+        const markLen = 3 * mmToPt;
+        const markOff = 1 * mmToPt;
+        const black = rgb(0, 0, 0);
+        const lw = 0.5;
+
+        const corners = [
+          // [corner x, corner y, horizontal dir, vertical dir]
+          [x, y + srcHPt, -1, 1],   // top-left (pdf coords: top = higher y)
+          [x + srcWPt, y + srcHPt, 1, 1],   // top-right
+          [x, y, -1, -1],           // bottom-left
+          [x + srcWPt, y, 1, -1],   // bottom-right
+        ];
+
+        for (const [cx, cy, dx, dy] of corners) {
+          // Horizontal mark
+          page.drawLine({
+            start: { x: cx + dx * markOff, y: cy },
+            end: { x: cx + dx * (markOff + markLen), y: cy },
+            thickness: lw, color: black,
+          });
+          // Vertical mark
+          page.drawLine({
+            start: { x: cx, y: cy + dy * markOff },
+            end: { x: cx, y: cy + dy * (markOff + markLen) },
+            thickness: lw, color: black,
+          });
+        }
+      }
+    }
+  }
+
+  const pdfBytes = await newDoc.save();
+  const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'tiled-output.pdf';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// Escape to close tile modal
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && document.getElementById('tile-modal').classList.contains('open')) {
+    closeTilePanel();
+  }
+});
 
 </script>
 </body>
