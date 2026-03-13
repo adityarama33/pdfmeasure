@@ -860,6 +860,7 @@ const GRID_SPACING = { cm: 72*0.393701, mm: 72*0.0393701*10, in: 72, px: 100 };
 
 function ptToUnit(pt) { return pt * PT_TO[unit]; }
 function fmtVal(val) { return unit === 'px' ? val.toFixed(0) : val.toFixed(2); }
+function fmtRuler(val) { return Number.isInteger(val) ? val.toFixed(0) : val.toFixed(1); }
 
 // Detect paper format
 function detectFormat(wPt, hPt) {
@@ -949,45 +950,33 @@ function drawGrid() {
     const isFull = tickMode === 'full';
     const tickLenH = isFull ? canvas.height : tickMode === 'medium' ? 12 : 6;
     const tickLenW = isFull ? canvas.width : tickMode === 'medium' ? 12 : 6;
-    const lw = isFull ? 0.5 : 1.5;
-    const alpha = isFull ? 0.35 : 0.8;
 
     ctx.setLineDash([]);
 
+    // Use a distinct blue/cyan color so ticks are clearly different from crop marks
+    const tickColor = isFull ? 'rgba(0,150,200,0.3)' : 'rgba(0,150,200,0.7)';
+    const tickLw = isFull ? 0.5 : 1;
+
     // Vertical ticks (top & bottom, or full height)
     for (let x = tickSpPx; x < canvas.width; x += tickSpPx) {
-      ctx.strokeStyle = `rgba(0,0,0,${alpha})`;
-      ctx.lineWidth = lw;
+      ctx.strokeStyle = tickColor;
+      ctx.lineWidth = tickLw;
       if (isFull) {
         ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
-        ctx.strokeStyle = 'rgba(255,255,255,0.15)';
-        ctx.lineWidth = 0.3;
-        ctx.beginPath(); ctx.moveTo(x + 1, 0); ctx.lineTo(x + 1, canvas.height); ctx.stroke();
       } else {
         ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, tickLenH); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(x, canvas.height); ctx.lineTo(x, canvas.height - tickLenH); ctx.stroke();
-        ctx.strokeStyle = 'rgba(255,255,255,0.4)';
-        ctx.lineWidth = 0.5;
-        ctx.beginPath(); ctx.moveTo(x + 1, 0); ctx.lineTo(x + 1, tickLenH); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(x + 1, canvas.height); ctx.lineTo(x + 1, canvas.height - tickLenH); ctx.stroke();
       }
     }
     // Horizontal ticks (left & right, or full width)
     for (let y = tickSpPx; y < canvas.height; y += tickSpPx) {
-      ctx.strokeStyle = `rgba(0,0,0,${alpha})`;
-      ctx.lineWidth = lw;
+      ctx.strokeStyle = tickColor;
+      ctx.lineWidth = tickLw;
       if (isFull) {
         ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
-        ctx.strokeStyle = 'rgba(255,255,255,0.15)';
-        ctx.lineWidth = 0.3;
-        ctx.beginPath(); ctx.moveTo(0, y + 1); ctx.lineTo(canvas.width, y + 1); ctx.stroke();
       } else {
         ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(tickLenW, y); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(canvas.width, y); ctx.lineTo(canvas.width - tickLenW, y); ctx.stroke();
-        ctx.strokeStyle = 'rgba(255,255,255,0.4)';
-        ctx.lineWidth = 0.5;
-        ctx.beginPath(); ctx.moveTo(0, y + 1); ctx.lineTo(tickLenW, y + 1); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(canvas.width, y + 1); ctx.lineTo(canvas.width - tickLenW, y + 1); ctx.stroke();
       }
     }
   }
@@ -1034,7 +1023,7 @@ function drawRulers(pdfW, pdfH, spacingPx, spacingPt) {
     tCtx.strokeStyle = '#888';
     tCtx.beginPath(); tCtx.moveTo(x, rulerH); tCtx.lineTo(x, rulerH - 12); tCtx.stroke();
     tCtx.fillStyle = '#ccc';
-    const label = fmtVal(i * ptToUnit(spacingPt));
+    const label = fmtRuler(i * ptToUnit(spacingPt));
     const tw = tCtx.measureText(label).width;
     const lx = Math.min(x, pdfW - tw / 2 - 2);
     tCtx.fillText(label, Math.max(tw / 2 + 2, lx), rulerH - 13);
@@ -1062,7 +1051,7 @@ function drawRulers(pdfW, pdfH, spacingPx, spacingPt) {
     bCtx.strokeStyle = '#888';
     bCtx.beginPath(); bCtx.moveTo(x, 0); bCtx.lineTo(x, 12); bCtx.stroke();
     bCtx.fillStyle = '#ccc';
-    const label = fmtVal(i * ptToUnit(spacingPt));
+    const label = fmtRuler(i * ptToUnit(spacingPt));
     const tw = bCtx.measureText(label).width;
     const lx = Math.min(x, pdfW - tw / 2 - 2);
     bCtx.fillText(label, Math.max(tw / 2 + 2, lx), 14 + fontSize);
@@ -1089,7 +1078,7 @@ function drawRulers(pdfW, pdfH, spacingPx, spacingPt) {
   for (let y = spacingPx; y < pdfH; y += spacingPx) {
     lCtx.strokeStyle = '#888';
     lCtx.beginPath(); lCtx.moveTo(rulerW, y); lCtx.lineTo(rulerW - 12, y); lCtx.stroke();
-    const text = fmtVal(i * ptToUnit(spacingPt));
+    const text = fmtRuler(i * ptToUnit(spacingPt));
     lCtx.fillStyle = '#ccc';
     const ly = Math.max(fontSize / 2 + 2, Math.min(y, pdfH - fontSize / 2 - 2));
     lCtx.fillText(text, rulerW - 14, ly);
@@ -1116,7 +1105,7 @@ function drawRulers(pdfW, pdfH, spacingPx, spacingPt) {
   for (let y = spacingPx; y < pdfH; y += spacingPx) {
     rCtx.strokeStyle = '#888';
     rCtx.beginPath(); rCtx.moveTo(0, y); rCtx.lineTo(12, y); rCtx.stroke();
-    const text = fmtVal(i * ptToUnit(spacingPt));
+    const text = fmtRuler(i * ptToUnit(spacingPt));
     rCtx.fillStyle = '#ccc';
     const ly = Math.max(fontSize / 2 + 2, Math.min(y, pdfH - fontSize / 2 - 2));
     rCtx.fillText(text, 14, ly);
