@@ -460,6 +460,46 @@
   }
   .tick-input:focus { outline: none; border-color: var(--accent); }
   .tick-unit { color: var(--muted); font-size: 10px; margin-left: 4px; }
+
+  /* Mobile */
+  @media (max-width: 768px) {
+    header {
+      padding: 10px 12px;
+      gap: 8px;
+    }
+    .controls {
+      gap: 6px;
+    }
+    .pill {
+      padding: 4px 10px;
+      font-size: 11px;
+    }
+    .tool-btn {
+      padding: 5px 8px;
+      font-size: 11px;
+    }
+    .divider { height: 20px; }
+    #info-bar {
+      padding: 6px 12px;
+      gap: 10px;
+      font-size: 10px;
+    }
+    #sidebar {
+      display: none !important;
+    }
+    #ruler-corner, #ruler-corner-tr, #ruler-corner-bl, #ruler-corner-br {
+      width: 28px;
+    }
+    #ruler-layout {
+      grid-template-columns: 28px auto 28px;
+    }
+    #ruler-left-wrapper, #ruler-left, #ruler-right-wrapper, #ruler-right {
+      width: 28px;
+    }
+    .zoom-controls { gap: 4px; }
+    .zoom-btn { width: 24px; height: 24px; font-size: 12px; }
+    #zoom-label { font-size: 10px; min-width: 32px; }
+  }
 </style>
 </head>
 <body>
@@ -594,7 +634,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs
 
 let pdfDoc = null;
 let pageWidthPt = 0, pageHeightPt = 0;
-let zoom = 1.5;
+let zoom = window.innerWidth <= 768 ? 0.75 : 1.5;
 let unit = 'cm';
 let showGrid = true;
 let showTicks = true;
@@ -653,6 +693,7 @@ async function loadPDF(file) {
   document.getElementById('canvas-area').style.display = 'flex';
   document.getElementById('header-controls').style.display = 'flex';
   document.getElementById('sidebar').style.display = 'flex';
+  document.getElementById('zoom-label').textContent = Math.round(zoom * 100) + '%';
 
   renderPage();
 }
@@ -762,8 +803,9 @@ function drawGrid() {
 
 function drawRulers(pdfW, pdfH, spacingPx, spacingPt) {
   const rulerH = 28;
-  const rulerW = 40;
-  const fontSize = Math.max(9, 10 * zoom / 1.5);
+  const isMobile = window.innerWidth <= 768;
+  const rulerW = isMobile ? 28 : 40;
+  const fontSize = Math.max(8, (isMobile ? 8 : 10) * zoom / 1.5);
 
   // --- Top ruler ---
   const topCanvas = document.getElementById('ruler-top');
@@ -915,9 +957,11 @@ function drawMeasureLine(ctx, x1, y1, x2, y2, label, isActive) {
 function getCanvasPos(e) {
   const canvas = document.getElementById('measure-canvas');
   const rect = canvas.getBoundingClientRect();
+  const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+  const clientY = e.touches ? e.touches[0].clientY : e.clientY;
   return {
-    x: (e.clientX - rect.left) * (canvas.width / rect.width),
-    y: (e.clientY - rect.top) * (canvas.height / rect.height)
+    x: (clientX - rect.left) * (canvas.width / rect.width),
+    y: (clientY - rect.top) * (canvas.height / rect.height)
   };
 }
 
@@ -1014,6 +1058,44 @@ document.getElementById('measure-canvas').addEventListener('contextmenu', e => {
   lineStart = null;
   drawMeasurements();
 });
+
+// Touch support for mobile
+document.getElementById('measure-canvas').addEventListener('touchstart', e => {
+  if (!rulerMode && !lineDrawMode) return;
+  e.preventDefault();
+  const pos = getCanvasPos(e);
+
+  if (rulerMode) {
+    if (!rulerStart) {
+      rulerStart = pos;
+    } else {
+      const label = getMeasureLabel(rulerStart.x, rulerStart.y, pos.x, pos.y);
+      measurements.push({ x1: rulerStart.x, y1: rulerStart.y, x2: pos.x, y2: pos.y, label });
+      addMeasurementToSidebar(label, rulerStart, pos);
+      rulerStart = null;
+      drawMeasurements();
+    }
+  } else if (lineDrawMode) {
+    if (!lineStart) {
+      lineStart = pos;
+    } else {
+      const end = pos;
+      const ln = { x1: lineStart.x, y1: lineStart.y, x2: end.x, y2: end.y };
+      drawnLines.push(ln);
+      addLineToSidebar(ln);
+      lineStart = null;
+      drawMeasurements();
+    }
+  }
+}, { passive: false });
+
+document.getElementById('measure-canvas').addEventListener('touchmove', e => {
+  if (!rulerMode && !lineDrawMode) return;
+  e.preventDefault();
+  const pos = getCanvasPos(e);
+  currentMousePos = pos;
+  drawMeasurements();
+}, { passive: false });
 
 function addMeasurementToSidebar(label, p1, p2) {
   const list = document.getElementById('measurements-list');
