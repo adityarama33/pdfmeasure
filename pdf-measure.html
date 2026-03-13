@@ -448,6 +448,12 @@
   }
   .tick-pill:hover { border-color: var(--accent); color: var(--accent); }
   .tick-pill.active { background: var(--accent); color: #000; border-color: var(--accent); }
+  .tick-color-swatch {
+    width: 22px; height: 22px; border-radius: 4px; border: 2px solid transparent;
+    cursor: pointer; padding: 0; outline: none;
+  }
+  .tick-color-swatch:hover { border-color: var(--accent); }
+  .tick-color-swatch.active { border-color: #fff; box-shadow: 0 0 0 1px var(--accent); }
   .tick-input {
     width: 60px;
     padding: 3px 6px;
@@ -657,6 +663,18 @@
             <span class="tick-unit" id="tick-unit-label">cm</span>
           </div>
         </div>
+        <div class="tick-row">
+          <label>Colour</label>
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <button class="tick-color-swatch active" data-tc="#0096c8" onclick="setTickColor('#0096c8')" style="background:#0096c8;" title="Cyan"></button>
+            <button class="tick-color-swatch" data-tc="#ff4444" onclick="setTickColor('#ff4444')" style="background:#ff4444;" title="Red"></button>
+            <button class="tick-color-swatch" data-tc="#44cc44" onclick="setTickColor('#44cc44')" style="background:#44cc44;" title="Green"></button>
+            <button class="tick-color-swatch" data-tc="#ffaa00" onclick="setTickColor('#ffaa00')" style="background:#ffaa00;" title="Orange"></button>
+            <button class="tick-color-swatch" data-tc="#ffffff" onclick="setTickColor('#ffffff')" style="background:#ffffff;" title="White"></button>
+            <button class="tick-color-swatch" data-tc="#000000" onclick="setTickColor('#000000')" style="background:#000000;border-color:#666;" title="Black"></button>
+            <input type="color" id="tick-color-custom" value="#0096c8" onchange="setTickColor(this.value)" style="width:22px;height:22px;padding:0;border:none;background:none;cursor:pointer;" title="Custom">
+          </div>
+        </div>
         <div class="tick-row" style="color:var(--muted);font-size:9px;">
           Leave spacing empty for auto (matches grid)
         </div>
@@ -844,6 +862,7 @@ let showGrid = true;
 let showTicks = true;
 let tickMode = 'medium'; // 'small', 'medium', 'full'
 let tickSpacingCustom = null; // null = match grid, or value in current unit
+let tickColor = '#0096c8'; // default cyan
 let rulerMode = false;
 let lineDrawMode = false;
 let rulerStart = null;
@@ -953,13 +972,14 @@ function drawGrid() {
 
     ctx.setLineDash([]);
 
-    // Use a distinct blue/cyan color so ticks are clearly different from crop marks
-    const tickColor = isFull ? 'rgba(0,150,200,0.3)' : 'rgba(0,150,200,0.7)';
+    // Convert tickColor hex to rgba for transparency control
+    const r = parseInt(tickColor.slice(1, 3), 16), g = parseInt(tickColor.slice(3, 5), 16), b = parseInt(tickColor.slice(5, 7), 16);
+    const tcRgba = isFull ? `rgba(${r},${g},${b},0.3)` : `rgba(${r},${g},${b},0.7)`;
     const tickLw = isFull ? 0.5 : 1;
 
     // Vertical ticks (top & bottom, or full height)
     for (let x = tickSpPx; x < canvas.width; x += tickSpPx) {
-      ctx.strokeStyle = tickColor;
+      ctx.strokeStyle = tcRgba;
       ctx.lineWidth = tickLw;
       if (isFull) {
         ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
@@ -970,7 +990,7 @@ function drawGrid() {
     }
     // Horizontal ticks (left & right, or full width)
     for (let y = tickSpPx; y < canvas.height; y += tickSpPx) {
-      ctx.strokeStyle = tickColor;
+      ctx.strokeStyle = tcRgba;
       ctx.lineWidth = tickLw;
       if (isFull) {
         ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
@@ -1361,6 +1381,15 @@ function setTickMode(mode) {
 function setTickSpacing(val) {
   const num = parseFloat(val);
   tickSpacingCustom = (isNaN(num) || num <= 0) ? null : num;
+  drawGrid();
+}
+
+function setTickColor(color) {
+  tickColor = color;
+  document.querySelectorAll('.tick-color-swatch').forEach(el => {
+    el.classList.toggle('active', el.dataset.tc === color);
+  });
+  document.getElementById('tick-color-custom').value = color;
   drawGrid();
 }
 
