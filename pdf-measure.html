@@ -796,6 +796,13 @@
         <div style="font-size:9px;font-family:'DM Mono',monospace;color:var(--muted);margin-top:-8px;">
           Detected from PDF. Edit if your sticker is a different size.
         </div>
+        <div class="tile-form-row" id="tile-trim-row" style="display:none">
+          <label>Trim bleed (crop to size)</label>
+          <div class="tick-pills">
+            <button class="tick-pill active" data-trim="off" onclick="setTileTrim(false)">Off</button>
+            <button class="tick-pill" data-trim="on" onclick="setTileTrim(true)">On</button>
+          </div>
+        </div>
         <div class="tile-summary" id="tile-summary">—</div>
       </div>
       <div class="tile-preview-area">
@@ -1480,6 +1487,7 @@ const SHEET_SIZES_MM = {
 
 let tileOrientation = 'portrait';
 let tileCropMarks = true;
+let tileTrimBleed = false;
 
 function openTilePanel() {
   if (!pdfDoc) return;
@@ -1517,6 +1525,14 @@ function setTileCropMarks(on) {
   updateTilePreview();
 }
 
+function setTileTrim(on) {
+  tileTrimBleed = on;
+  document.querySelectorAll('[data-trim]').forEach(el => {
+    el.classList.toggle('active', (el.dataset.trim === 'on') === on);
+  });
+  updateTilePreview();
+}
+
 function getSheetDimsMM() {
   const sel = document.getElementById('tile-sheet-size').value;
   let w, h;
@@ -1546,6 +1562,16 @@ function computeTileLayout() {
 
 function updateTilePreview() {
   if (!pdfDoc) return;
+
+  // Show trim option if source size differs from detected PDF size
+  const detectedW = (pageWidthPt * PT_TO.mm).toFixed(1);
+  const detectedH = (pageHeightPt * PT_TO.mm).toFixed(1);
+  const inputW = document.getElementById('tile-src-w').value;
+  const inputH = document.getElementById('tile-src-h').value;
+  const sizeChanged = inputW !== detectedW || inputH !== detectedH;
+  document.getElementById('tile-trim-row').style.display = sizeChanged ? 'flex' : 'none';
+  if (!sizeChanged) tileTrimBleed = false;
+
   const layout = computeTileLayout();
   const { sheet, margin, gap, srcW, srcH, cols, rows, total } = layout;
 
@@ -1632,6 +1658,19 @@ async function exportTiledPDF() {
 
   const { PDFDocument, rgb } = PDFLib;
   const srcDoc = await PDFDocument.load(pdfRawBytes);
+
+  // If trimming, modify the source page's CropBox before embedding
+  if (tileTrimBleed) {
+    const mmToPt = 2.83465;
+    const srcPage = srcDoc.getPage(0);
+    const { width: origW, height: origH } = srcPage.getSize();
+    const trimW = layout.srcW * mmToPt;
+    const trimH = layout.srcH * mmToPt;
+    const offsetX = (origW - trimW) / 2;
+    const offsetY = (origH - trimH) / 2;
+    srcPage.setCropBox(offsetX, offsetY, trimW, trimH);
+  }
+
   const newDoc = await PDFDocument.create();
   const [embeddedPage] = await newDoc.embedPdf(srcDoc, [0]);
 
