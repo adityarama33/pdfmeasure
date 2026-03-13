@@ -803,6 +803,22 @@
             <button class="tick-pill" data-trim="on" onclick="setTileTrim(true)">On</button>
           </div>
         </div>
+        <div class="tile-form-row">
+          <label>Horizontal align</label>
+          <div class="tick-pills">
+            <button class="tick-pill active" data-alignh="left" onclick="setTileAlignH('left')">Left</button>
+            <button class="tick-pill" data-alignh="center" onclick="setTileAlignH('center')">Center</button>
+            <button class="tick-pill" data-alignh="right" onclick="setTileAlignH('right')">Right</button>
+          </div>
+        </div>
+        <div class="tile-form-row">
+          <label>Vertical align</label>
+          <div class="tick-pills">
+            <button class="tick-pill active" data-alignv="top" onclick="setTileAlignV('top')">Top</button>
+            <button class="tick-pill" data-alignv="middle" onclick="setTileAlignV('middle')">Middle</button>
+            <button class="tick-pill" data-alignv="bottom" onclick="setTileAlignV('bottom')">Bottom</button>
+          </div>
+        </div>
         <div class="tile-summary" id="tile-summary">—</div>
       </div>
       <div class="tile-preview-area">
@@ -1488,6 +1504,8 @@ const SHEET_SIZES_MM = {
 let tileOrientation = 'portrait';
 let tileCropMarks = true;
 let tileTrimBleed = false;
+let tileAlignH = 'left';   // left | center | right
+let tileAlignV = 'top';    // top | middle | bottom
 
 function openTilePanel() {
   if (!pdfDoc) return;
@@ -1533,6 +1551,22 @@ function setTileTrim(on) {
   updateTilePreview();
 }
 
+function setTileAlignH(val) {
+  tileAlignH = val;
+  document.querySelectorAll('[data-alignh]').forEach(el => {
+    el.classList.toggle('active', el.dataset.alignh === val);
+  });
+  updateTilePreview();
+}
+
+function setTileAlignV(val) {
+  tileAlignV = val;
+  document.querySelectorAll('[data-alignv]').forEach(el => {
+    el.classList.toggle('active', el.dataset.alignv === val);
+  });
+  updateTilePreview();
+}
+
 function getSheetDimsMM() {
   const sel = document.getElementById('tile-sheet-size').value;
   let w, h;
@@ -1557,7 +1591,13 @@ function computeTileLayout() {
   const usableH = sheet.h - 2 * margin;
   const cols = Math.max(0, Math.floor((usableW + gap) / (srcW + gap)));
   const rows = Math.max(0, Math.floor((usableH + gap) / (srcH + gap)));
-  return { sheet, margin, gap, srcW, srcH, cols, rows, total: cols * rows };
+  const gridW = cols > 0 ? cols * srcW + (cols - 1) * gap : 0;
+  const gridH = rows > 0 ? rows * srcH + (rows - 1) * gap : 0;
+  const extraW = usableW - gridW;
+  const extraH = usableH - gridH;
+  const offsetX = tileAlignH === 'center' ? extraW / 2 : tileAlignH === 'right' ? extraW : 0;
+  const offsetY = tileAlignV === 'middle' ? extraH / 2 : tileAlignV === 'bottom' ? extraH : 0;
+  return { sheet, margin, gap, srcW, srcH, cols, rows, total: cols * rows, offsetX, offsetY };
 }
 
 function updateTilePreview() {
@@ -1608,45 +1648,58 @@ function updateTilePreview() {
   const gS = gap * scale;
   const cW = srcW * scale;
   const cH = srcH * scale;
-  const cropLen = 3 * scale; // 3mm
-  const cropOff = 1 * scale; // 1mm offset
+  const oX = layout.offsetX * scale;
+  const oY = layout.offsetY * scale;
 
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
-      const x = mS + c * (cW + gS);
-      const y = mS + r * (cH + gS);
-
-      // Copy rectangle
+      const x = mS + oX + c * (cW + gS);
+      const y = mS + oY + r * (cH + gS);
       ctx.fillStyle = '#f0ece4';
       ctx.fillRect(x, y, cW, cH);
       ctx.strokeStyle = '#bbb';
       ctx.lineWidth = 0.5;
       ctx.strokeRect(x, y, cW, cH);
+    }
+  }
 
-      // Crop marks
-      if (tileCropMarks) {
-        ctx.strokeStyle = '#000';
-        ctx.lineWidth = 0.5;
-        // Top-left
-        ctx.beginPath();
-        ctx.moveTo(x - cropOff - cropLen, y); ctx.lineTo(x - cropOff, y); ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(x, y - cropOff - cropLen); ctx.lineTo(x, y - cropOff); ctx.stroke();
-        // Top-right
-        ctx.beginPath();
-        ctx.moveTo(x + cW + cropOff, y); ctx.lineTo(x + cW + cropOff + cropLen, y); ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(x + cW, y - cropOff - cropLen); ctx.lineTo(x + cW, y - cropOff); ctx.stroke();
-        // Bottom-left
-        ctx.beginPath();
-        ctx.moveTo(x - cropOff - cropLen, y + cH); ctx.lineTo(x - cropOff, y + cH); ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(x, y + cH + cropOff); ctx.lineTo(x, y + cH + cropOff + cropLen); ctx.stroke();
-        // Bottom-right
-        ctx.beginPath();
-        ctx.moveTo(x + cW + cropOff, y + cH); ctx.lineTo(x + cW + cropOff + cropLen, y + cH); ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(x + cW, y + cH + cropOff); ctx.lineTo(x + cW, y + cH + cropOff + cropLen); ctx.stroke();
+  // Crop marks: full cut lines extending to sheet edges
+  if (tileCropMarks && total > 0) {
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 0.5;
+    const cropExt = Math.max(mS, 3 * scale); // extend to margin or 3mm min
+
+    // Vertical cut lines (at each column boundary)
+    for (let c = 0; c <= cols; c++) {
+      // Left edge of column c
+      if (c < cols) {
+        const xl = mS + oX + c * (cW + gS);
+        ctx.beginPath(); ctx.moveTo(xl, 0); ctx.lineTo(xl, mS + oY); ctx.stroke();
+        const gridBottom = mS + oY + rows * cH + (rows - 1) * gS;
+        ctx.beginPath(); ctx.moveTo(xl, gridBottom); ctx.lineTo(xl, canvas.height); ctx.stroke();
+      }
+      // Right edge of column c-1
+      if (c > 0) {
+        const xr = mS + oX + c * cW + (c - 1) * gS;
+        ctx.beginPath(); ctx.moveTo(xr, 0); ctx.lineTo(xr, mS + oY); ctx.stroke();
+        const gridBottom = mS + oY + rows * cH + (rows - 1) * gS;
+        ctx.beginPath(); ctx.moveTo(xr, gridBottom); ctx.lineTo(xr, canvas.height); ctx.stroke();
+      }
+    }
+
+    // Horizontal cut lines (at each row boundary)
+    for (let r = 0; r <= rows; r++) {
+      if (r < rows) {
+        const yt = mS + oY + r * (cH + gS);
+        ctx.beginPath(); ctx.moveTo(0, yt); ctx.lineTo(mS + oX, yt); ctx.stroke();
+        const gridRight = mS + oX + cols * cW + (cols - 1) * gS;
+        ctx.beginPath(); ctx.moveTo(gridRight, yt); ctx.lineTo(canvas.width, yt); ctx.stroke();
+      }
+      if (r > 0) {
+        const yb = mS + oY + r * cH + (r - 1) * gS;
+        ctx.beginPath(); ctx.moveTo(0, yb); ctx.lineTo(mS + oX, yb); ctx.stroke();
+        const gridRight = mS + oX + cols * cW + (cols - 1) * gS;
+        ctx.beginPath(); ctx.moveTo(gridRight, yb); ctx.lineTo(canvas.width, yb); ctx.stroke();
       }
     }
   }
@@ -1684,41 +1737,53 @@ async function exportTiledPDF() {
 
   const page = newDoc.addPage([sheetWPt, sheetHPt]);
 
+  // Alignment offsets
+  const oXPt = layout.offsetX * mmToPt;
+  const oYPt = layout.offsetY * mmToPt;
+
+  // Place all copies
   for (let row = 0; row < layout.rows; row++) {
     for (let col = 0; col < layout.cols; col++) {
-      const x = marginPt + col * (srcWPt + gapPt);
-      const y = sheetHPt - marginPt - (row + 1) * srcHPt - row * gapPt;
-
+      const x = marginPt + oXPt + col * (srcWPt + gapPt);
+      const y = sheetHPt - marginPt - oYPt - (row + 1) * srcHPt - row * gapPt;
       page.drawPage(embeddedPage, { x, y, width: srcWPt, height: srcHPt });
+    }
+  }
 
-      if (tileCropMarks) {
-        const markLen = 3 * mmToPt;
-        const markOff = 1 * mmToPt;
-        const black = rgb(0, 0, 0);
-        const lw = 0.5;
+  // Crop marks: full cut lines extending to sheet edges
+  if (tileCropMarks && layout.total > 0) {
+    const black = rgb(0, 0, 0);
+    const lw = 0.5;
+    const gridBottom = sheetHPt - marginPt - oYPt - layout.rows * srcHPt - (layout.rows - 1) * gapPt;
+    const gridTop = sheetHPt - marginPt - oYPt;
+    const gridLeft = marginPt + oXPt;
+    const gridRight = marginPt + oXPt + layout.cols * srcWPt + (layout.cols - 1) * gapPt;
 
-        const corners = [
-          // [corner x, corner y, horizontal dir, vertical dir]
-          [x, y + srcHPt, -1, 1],   // top-left (pdf coords: top = higher y)
-          [x + srcWPt, y + srcHPt, 1, 1],   // top-right
-          [x, y, -1, -1],           // bottom-left
-          [x + srcWPt, y, 1, -1],   // bottom-right
-        ];
+    // Vertical cut lines
+    for (let c = 0; c <= layout.cols; c++) {
+      if (c < layout.cols) {
+        const xl = marginPt + oXPt + c * (srcWPt + gapPt);
+        page.drawLine({ start: { x: xl, y: sheetHPt }, end: { x: xl, y: gridTop }, thickness: lw, color: black });
+        page.drawLine({ start: { x: xl, y: gridBottom }, end: { x: xl, y: 0 }, thickness: lw, color: black });
+      }
+      if (c > 0) {
+        const xr = marginPt + oXPt + c * srcWPt + (c - 1) * gapPt;
+        page.drawLine({ start: { x: xr, y: sheetHPt }, end: { x: xr, y: gridTop }, thickness: lw, color: black });
+        page.drawLine({ start: { x: xr, y: gridBottom }, end: { x: xr, y: 0 }, thickness: lw, color: black });
+      }
+    }
 
-        for (const [cx, cy, dx, dy] of corners) {
-          // Horizontal mark
-          page.drawLine({
-            start: { x: cx + dx * markOff, y: cy },
-            end: { x: cx + dx * (markOff + markLen), y: cy },
-            thickness: lw, color: black,
-          });
-          // Vertical mark
-          page.drawLine({
-            start: { x: cx, y: cy + dy * markOff },
-            end: { x: cx, y: cy + dy * (markOff + markLen) },
-            thickness: lw, color: black,
-          });
-        }
+    // Horizontal cut lines
+    for (let r = 0; r <= layout.rows; r++) {
+      if (r < layout.rows) {
+        const yt = sheetHPt - marginPt - oYPt - r * (srcHPt + gapPt);
+        page.drawLine({ start: { x: 0, y: yt }, end: { x: gridLeft, y: yt }, thickness: lw, color: black });
+        page.drawLine({ start: { x: gridRight, y: yt }, end: { x: sheetWPt, y: yt }, thickness: lw, color: black });
+      }
+      if (r > 0) {
+        const yb = sheetHPt - marginPt - oYPt - r * srcHPt - (r - 1) * gapPt;
+        page.drawLine({ start: { x: 0, y: yb }, end: { x: gridLeft, y: yb }, thickness: lw, color: black });
+        page.drawLine({ start: { x: gridRight, y: yb }, end: { x: sheetWPt, y: yb }, thickness: lw, color: black });
       }
     }
   }
