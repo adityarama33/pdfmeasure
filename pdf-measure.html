@@ -641,6 +641,11 @@
       ✏️ Draw Line
     </button>
 
+    <!-- Straight line snap -->
+    <button class="tool-btn" id="snap-btn" onclick="toggleSnap()">
+      ⊥ Straight
+    </button>
+
     <!-- Tick marks settings -->
     <div class="tick-wrapper">
       <button class="tool-btn active" id="tick-btn" onclick="toggleTicks()">
@@ -896,6 +901,7 @@ let tickThickness = 1; // px
 let tickOpacity = 0.7; // 0-1
 let rulerMode = false;
 let lineDrawMode = false;
+let snapStraight = false;
 let rulerStart = null;
 let lineStart = null;
 let measurements = [];
@@ -1247,9 +1253,10 @@ document.getElementById('measure-canvas').addEventListener('mousedown', e => {
     if (!rulerStart) {
       rulerStart = pos;
     } else {
-      const label = getMeasureLabel(rulerStart.x, rulerStart.y, pos.x, pos.y);
-      measurements.push({ x1: rulerStart.x, y1: rulerStart.y, x2: pos.x, y2: pos.y, label });
-      addMeasurementToSidebar(label, rulerStart, pos);
+      const end = (snapStraight || shiftHeld) ? snapToAxis(rulerStart, pos) : pos;
+      const label = getMeasureLabel(rulerStart.x, rulerStart.y, end.x, end.y);
+      measurements.push({ x1: rulerStart.x, y1: rulerStart.y, x2: end.x, y2: end.y, label });
+      addMeasurementToSidebar(label, rulerStart, end);
       rulerStart = null;
       drawMeasurements();
     }
@@ -1257,7 +1264,7 @@ document.getElementById('measure-canvas').addEventListener('mousedown', e => {
     if (!lineStart) {
       lineStart = pos;
     } else {
-      const end = shiftHeld ? snapToAxis(lineStart, pos) : pos;
+      const end = (snapStraight || shiftHeld) ? snapToAxis(lineStart, pos) : pos;
       const ln = { x1: lineStart.x, y1: lineStart.y, x2: end.x, y2: end.y };
       drawnLines.push(ln);
       addLineToSidebar(ln);
@@ -1276,9 +1283,13 @@ document.getElementById('measure-canvas').addEventListener('mousemove', e => {
   tooltip.style.left = (e.clientX + 14) + 'px';
   tooltip.style.top = (e.clientY - 10) + 'px';
 
+  const shouldSnap = snapStraight || shiftHeld;
+
   if (rulerMode) {
     if (rulerStart) {
-      tooltip.textContent = getMeasureLabel(rulerStart.x, rulerStart.y, pos.x, pos.y);
+      const end = shouldSnap ? snapToAxis(rulerStart, pos) : pos;
+      currentMousePos = end;
+      tooltip.textContent = getMeasureLabel(rulerStart.x, rulerStart.y, end.x, end.y);
       tooltip.style.display = 'block';
     } else {
       const p = canvasPtToDoc(pos.x, pos.y);
@@ -1287,15 +1298,16 @@ document.getElementById('measure-canvas').addEventListener('mousemove', e => {
     }
   } else if (lineDrawMode) {
     if (lineStart) {
-      const end = shiftHeld ? snapToAxis(lineStart, pos) : pos;
+      const end = shouldSnap ? snapToAxis(lineStart, pos) : pos;
+      currentMousePos = end;
       const dx = Math.abs(end.x - lineStart.x) / zoom;
       const dy = Math.abs(end.y - lineStart.y) / zoom;
       const len = Math.sqrt(dx*dx + dy*dy);
-      const snapNote = shiftHeld ? (Math.abs(end.y - lineStart.y) < 1 ? ' [H]' : ' [V]') : '';
+      const snapNote = shouldSnap ? (Math.abs(end.y - lineStart.y) < 1 ? ' [H]' : ' [V]') : '';
       tooltip.textContent = `${fmtVal(ptToUnit(len))} ${UNIT_LABEL[unit]}${snapNote}`;
       tooltip.style.display = 'block';
     } else {
-      tooltip.textContent = shiftHeld ? 'Shift: snap active' : 'Click to start line';
+      tooltip.textContent = shouldSnap ? 'Snap: straight lines' : 'Click to start line';
       tooltip.style.display = 'block';
     }
   }
@@ -1326,9 +1338,10 @@ document.getElementById('measure-canvas').addEventListener('touchstart', e => {
     if (!rulerStart) {
       rulerStart = pos;
     } else {
-      const label = getMeasureLabel(rulerStart.x, rulerStart.y, pos.x, pos.y);
-      measurements.push({ x1: rulerStart.x, y1: rulerStart.y, x2: pos.x, y2: pos.y, label });
-      addMeasurementToSidebar(label, rulerStart, pos);
+      const end = snapStraight ? snapToAxis(rulerStart, pos) : pos;
+      const label = getMeasureLabel(rulerStart.x, rulerStart.y, end.x, end.y);
+      measurements.push({ x1: rulerStart.x, y1: rulerStart.y, x2: end.x, y2: end.y, label });
+      addMeasurementToSidebar(label, rulerStart, end);
       rulerStart = null;
       drawMeasurements();
     }
@@ -1336,7 +1349,7 @@ document.getElementById('measure-canvas').addEventListener('touchstart', e => {
     if (!lineStart) {
       lineStart = pos;
     } else {
-      const end = pos;
+      const end = snapStraight ? snapToAxis(lineStart, pos) : pos;
       const ln = { x1: lineStart.x, y1: lineStart.y, x2: end.x, y2: end.y };
       drawnLines.push(ln);
       addLineToSidebar(ln);
@@ -1600,6 +1613,11 @@ function toggleLineDraw() {
   drawMeasurements();
 }
 
+function toggleSnap() {
+  snapStraight = !snapStraight;
+  document.getElementById('snap-btn').classList.toggle('active', snapStraight);
+}
+
 function clearLines() {
   drawnLines = [];
   lineStart = null;
@@ -1799,10 +1817,21 @@ function updateTilePreview() {
   const oX = layout.offsetX * scale;
   const oY = layout.offsetY * scale;
 
+  // Source size may be larger than print size (bleed extends beyond slot)
+  const srcCW = layout.srcW * scale;
+  const srcCH = layout.srcH * scale;
+  const bleedXPx = (srcCW - cW) / 2;
+  const bleedYPx = (srcCH - cH) / 2;
+
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       const x = mS + oX + c * (cW + gS);
       const y = mS + oY + r * (cH + gS);
+      // Draw bleed area (lighter) then slot area (darker)
+      if (bleedXPx > 0 || bleedYPx > 0) {
+        ctx.fillStyle = '#e8e2d8';
+        ctx.fillRect(x - bleedXPx, y - bleedYPx, srcCW, srcCH);
+      }
       ctx.fillStyle = '#f0ece4';
       ctx.fillRect(x, y, cW, cH);
       ctx.strokeStyle = '#bbb';
@@ -1890,12 +1919,18 @@ async function generateTiledPDF() {
   const oXPt = layout.offsetX * mmToPt;
   const oYPt = layout.offsetY * mmToPt;
 
-  // Place all copies (scaled to print size)
+  // Place all copies — draw at source size, centered in print-size slot
+  // This preserves bleed: the PDF extends beyond the crop boundary
+  const srcWPt = layout.srcW * mmToPt;
+  const srcHPt = layout.srcH * mmToPt;
+  const bleedX = (srcWPt - printWPt) / 2;
+  const bleedY = (srcHPt - printHPt) / 2;
+
   for (let row = 0; row < layout.rows; row++) {
     for (let col = 0; col < layout.cols; col++) {
-      const x = marginPt + oXPt + col * (printWPt + gapPt);
-      const y = sheetHPt - marginPt - oYPt - (row + 1) * printHPt - row * gapPt;
-      page.drawPage(embeddedPage, { x, y, width: printWPt, height: printHPt });
+      const slotX = marginPt + oXPt + col * (printWPt + gapPt);
+      const slotY = sheetHPt - marginPt - oYPt - (row + 1) * printHPt - row * gapPt;
+      page.drawPage(embeddedPage, { x: slotX - bleedX, y: slotY - bleedY, width: srcWPt, height: srcHPt });
     }
   }
 
