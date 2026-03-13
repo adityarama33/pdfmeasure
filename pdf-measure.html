@@ -860,8 +860,9 @@
         <canvas id="tile-preview-canvas" width="260" height="360"></canvas>
       </div>
     </div>
-    <div class="tile-footer">
-      <button class="upload-btn tile-export-btn" onclick="exportTiledPDF()">Export tiled PDF</button>
+    <div class="tile-footer" style="display:flex;gap:8px;">
+      <button class="upload-btn tile-export-btn" onclick="reviewTiledPDF()" style="flex:1;background:transparent;border:1px solid var(--accent);color:var(--accent);">Review in Measure</button>
+      <button class="upload-btn tile-export-btn" onclick="exportTiledPDF()" style="flex:1;">Export tiled PDF</button>
     </div>
   </div>
 </div>
@@ -1836,11 +1837,10 @@ function updateTilePreview() {
   }
 }
 
-async function exportTiledPDF() {
-  try {
+async function generateTiledPDF() {
   const layout = computeTileLayout();
-  if (layout.total === 0) { alert('No copies fit on the sheet. Adjust settings.'); return; }
-  if (!pdfRawBytes) { alert('No PDF loaded.'); return; }
+  if (layout.total === 0) throw new Error('No copies fit on the sheet. Adjust settings.');
+  if (!pdfRawBytes) throw new Error('No PDF loaded.');
 
   const { PDFDocument, rgb } = PDFLib;
   const srcDoc = await PDFDocument.load(pdfRawBytes);
@@ -1921,19 +1921,48 @@ async function exportTiledPDF() {
     }
   }
 
-  const pdfBytes = await newDoc.save();
-  const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'tiled-output.pdf';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  return await newDoc.save();
+}
+
+async function exportTiledPDF() {
+  try {
+    const pdfBytes = await generateTiledPDF();
+    const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'tiled-output.pdf';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   } catch (err) {
     console.error('Export failed:', err);
     alert('Export failed: ' + err.message);
+  }
+}
+
+async function reviewTiledPDF() {
+  try {
+    const pdfBytes = await generateTiledPDF();
+    // Close the tile modal
+    closeTilePanel();
+    // Load the generated PDF into the viewer
+    pdfRawBytes = new Uint8Array(pdfBytes.slice(0));
+    const arrayBuf = pdfBytes.buffer.slice(pdfBytes.byteOffset, pdfBytes.byteOffset + pdfBytes.byteLength);
+    pdfDoc = await pdfjsLib.getDocument({ data: arrayBuf }).promise;
+    const page = await pdfDoc.getPage(1);
+    const vp = page.getViewport({ scale: 1 });
+    pageWidthPt = vp.width;
+    pageHeightPt = vp.height;
+    document.getElementById('info-filename').textContent = 'Tiled Preview';
+    updateSizeDisplay();
+    document.getElementById('info-format').textContent = detectFormat(pageWidthPt, pageHeightPt);
+    document.getElementById('info-dims').textContent = `${pageWidthPt.toFixed(0)} × ${pageHeightPt.toFixed(0)} pt`;
+    renderPage();
+  } catch (err) {
+    console.error('Review failed:', err);
+    alert('Review failed: ' + err.message);
   }
 }
 
