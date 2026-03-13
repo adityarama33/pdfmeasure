@@ -927,9 +927,7 @@ async function loadPDF(file) {
 
   // Update info bar
   document.getElementById('info-filename').textContent = file.name;
-  const wMM = (pageWidthPt * PT_TO.mm).toFixed(1);
-  const hMM = (pageHeightPt * PT_TO.mm).toFixed(1);
-  document.getElementById('info-size').textContent = `${wMM} × ${hMM} mm`;
+  updateSizeDisplay();
   document.getElementById('info-format').textContent = detectFormat(pageWidthPt, pageHeightPt);
   document.getElementById('info-dims').textContent = `${pageWidthPt.toFixed(0)} × ${pageHeightPt.toFixed(0)} pt`;
 
@@ -1083,16 +1081,16 @@ function drawRulers(pdfW, pdfH, spacingPx, spacingPt) {
   bCtx.lineWidth = 0.5;
 
   bCtx.textAlign = 'center';
-  bCtx.textBaseline = 'top';
+  bCtx.textBaseline = 'middle';
   i = 1;
   for (let x = spacingPx; x < pdfW; x += spacingPx) {
     bCtx.strokeStyle = '#888';
-    bCtx.beginPath(); bCtx.moveTo(x, 0); bCtx.lineTo(x, 12); bCtx.stroke();
+    bCtx.beginPath(); bCtx.moveTo(x, 0); bCtx.lineTo(x, 10); bCtx.stroke();
     bCtx.fillStyle = '#ccc';
     const label = fmtRuler(i * ptToUnit(spacingPt));
     const tw = bCtx.measureText(label).width;
     const lx = Math.min(x, pdfW - tw / 2 - 2);
-    bCtx.fillText(label, Math.max(tw / 2 + 2, lx), 14 + fontSize);
+    bCtx.fillText(label, Math.max(tw / 2 + 2, lx), 10 + (rulerH - 10) / 2);
     i++;
   }
 
@@ -1362,6 +1360,14 @@ function clearMeasurements() {
   drawMeasurements();
 }
 
+function updateSizeDisplay() {
+  if (!pageWidthPt) return;
+  const w = (pageWidthPt * PT_TO[unit]);
+  const h = (pageHeightPt * PT_TO[unit]);
+  const dec = unit === 'px' ? 0 : unit === 'mm' ? 1 : 2;
+  document.getElementById('info-size').textContent = `${w.toFixed(dec)} × ${h.toFixed(dec)} ${unit}`;
+}
+
 function setUnit(u) {
   unit = u;
   document.querySelectorAll('[data-unit]').forEach(el => {
@@ -1369,6 +1375,7 @@ function setUnit(u) {
   });
   const tickUnitLabel = document.getElementById('tick-unit-label');
   if (tickUnitLabel) tickUnitLabel.textContent = u;
+  updateSizeDisplay();
   if (pdfDoc) { drawGrid(); drawMeasurements(); }
 }
 
@@ -1425,6 +1432,7 @@ function setTickOpacity(val) {
 
 async function exportWithTicks() {
   if (!pdfRawBytes) return;
+  try {
   const { PDFDocument, rgb } = PDFLib;
   const srcDoc = await PDFDocument.load(pdfRawBytes);
   const newDoc = await PDFDocument.create();
@@ -1474,8 +1482,14 @@ async function exportWithTicks() {
   const a = document.createElement('a');
   a.href = url;
   a.download = 'pdf-with-ticks.pdf';
+  document.body.appendChild(a);
   a.click();
+  document.body.removeChild(a);
   URL.revokeObjectURL(url);
+  } catch (err) {
+    console.error('Export failed:', err);
+    alert('Export failed: ' + err.message);
+  }
 }
 
 // Close popover when clicking outside
@@ -1823,8 +1837,10 @@ function updateTilePreview() {
 }
 
 async function exportTiledPDF() {
+  try {
   const layout = computeTileLayout();
-  if (layout.total === 0) return;
+  if (layout.total === 0) { alert('No copies fit on the sheet. Adjust settings.'); return; }
+  if (!pdfRawBytes) { alert('No PDF loaded.'); return; }
 
   const { PDFDocument, rgb } = PDFLib;
   const srcDoc = await PDFDocument.load(pdfRawBytes);
@@ -1911,8 +1927,14 @@ async function exportTiledPDF() {
   const a = document.createElement('a');
   a.href = url;
   a.download = 'tiled-output.pdf';
+  document.body.appendChild(a);
   a.click();
+  document.body.removeChild(a);
   URL.revokeObjectURL(url);
+  } catch (err) {
+    console.error('Export failed:', err);
+    alert('Export failed: ' + err.message);
+  }
 }
 
 // Escape to close tile modal
