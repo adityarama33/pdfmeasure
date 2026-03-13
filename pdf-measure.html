@@ -1984,6 +1984,19 @@ async function generateTiledPDF() {
   const { PDFDocument, rgb } = PDFLib;
   const srcDoc = await PDFDocument.load(pdfRawBytes);
 
+  // When PDF has bleed, crop to sticker size to remove built-in crop marks
+  // The bleed area is preserved by drawing at source size, but the CropBox
+  // hides the original PDF's crop marks outside the sticker boundary
+  if (tileBleedMode === 'yes' && (layout.printW < layout.srcW || layout.printH < layout.srcH)) {
+    const mmToPtC = 2.83465;
+    const srcPage = srcDoc.getPage(0);
+    const { width: origW, height: origH } = srcPage.getSize();
+    const cropW = layout.printW * mmToPtC;
+    const cropH = layout.printH * mmToPtC;
+    const offsetX = (origW - cropW) / 2;
+    const offsetY = (origH - cropH) / 2;
+    srcPage.setCropBox(offsetX, offsetY, cropW, cropH);
+  }
 
   const newDoc = await PDFDocument.create();
   const [embeddedPage] = await newDoc.embedPdf(srcDoc, [0]);
@@ -2002,18 +2015,20 @@ async function generateTiledPDF() {
   const oXPt = layout.offsetX * mmToPt;
   const oYPt = layout.offsetY * mmToPt;
 
-  // Place all copies — draw at source size, centered in print-size slot
-  // This preserves bleed: the PDF extends beyond the crop boundary
-  const srcWPt = layout.srcW * mmToPt;
-  const srcHPt = layout.srcH * mmToPt;
-  const bleedX = (srcWPt - printWPt) / 2;
-  const bleedY = (srcHPt - printHPt) / 2;
+  // Place all copies
+  // If CropBox was applied (yes-bleed mode), embedded page is already sticker-sized
+  // If no bleed mode, source = print size (or source is drawn centered for add-bleed)
+  const wasCropped = tileBleedMode === 'yes' && (layout.printW < layout.srcW || layout.printH < layout.srcH);
+  const drawW = wasCropped ? printWPt : layout.srcW * mmToPt;
+  const drawH = wasCropped ? printHPt : layout.srcH * mmToPt;
+  const bleedX = (drawW - printWPt) / 2;
+  const bleedY = (drawH - printHPt) / 2;
 
   for (let row = 0; row < layout.rows; row++) {
     for (let col = 0; col < layout.cols; col++) {
       const slotX = marginPt + oXPt + col * (printWPt + gapPt);
       const slotY = sheetHPt - marginPt - oYPt - (row + 1) * printHPt - row * gapPt;
-      page.drawPage(embeddedPage, { x: slotX - bleedX, y: slotY - bleedY, width: srcWPt, height: srcHPt });
+      page.drawPage(embeddedPage, { x: slotX - bleedX, y: slotY - bleedY, width: drawW, height: drawH });
     }
   }
 
