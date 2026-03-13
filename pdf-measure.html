@@ -825,27 +825,44 @@
             <button class="tick-pill active" data-crop="on" onclick="setTileCropMarks(true)">On</button>
           </div>
         </div>
-        <div class="tile-form-row">
-          <label>PDF size (mm)</label>
-          <div style="display:flex;align-items:center;gap:4px;">
-            <span class="tick-input" id="tile-src-w" style="width:50px;display:inline-block;opacity:0.6;background:transparent;border-color:#333;">—</span>
-            <span style="color:var(--muted)">x</span>
-            <span class="tick-input" id="tile-src-h" style="width:50px;display:inline-block;opacity:0.6;background:transparent;border-color:#333;">—</span>
+        <div style="border-top:1px solid var(--border);margin:8px 0;padding-top:8px;">
+          <div class="tile-form-row">
+            <label>PDF size (mm)</label>
+            <div style="display:flex;align-items:center;gap:4px;">
+              <span class="tick-input" id="tile-src-w" style="width:50px;display:inline-block;opacity:0.6;background:transparent;border-color:#333;">—</span>
+              <span style="color:var(--muted)">x</span>
+              <span class="tick-input" id="tile-src-h" style="width:50px;display:inline-block;opacity:0.6;background:transparent;border-color:#333;">—</span>
+            </div>
           </div>
-        </div>
-        <div style="font-size:9px;font-family:'DM Mono',monospace;color:var(--muted);margin-top:-8px;">
-          Detected from your PDF (includes bleed if any).
-        </div>
-        <div class="tile-form-row">
-          <label>Sticker size (mm)</label>
-          <div style="display:flex;align-items:center;gap:4px;">
-            <input class="tick-input" id="tile-sticker-w" style="width:50px" oninput="onStickerSizeChange()">
-            <span style="color:var(--muted)">x</span>
-            <input class="tick-input" id="tile-sticker-h" style="width:50px" oninput="onStickerSizeChange()">
+          <div class="tile-form-row">
+            <label>Does your PDF include bleed?</label>
+            <div class="tick-pills">
+              <button class="tick-pill active" data-bleed="no" onclick="setTileBleedMode('no')">No</button>
+              <button class="tick-pill" data-bleed="yes" onclick="setTileBleedMode('yes')">Yes</button>
+            </div>
           </div>
-        </div>
-        <div style="font-size:9px;font-family:'DM Mono',monospace;color:var(--muted);margin-top:-8px;" id="tile-bleed-info">
-          Your actual sticker size (what you want to cut). If smaller than PDF size, bleed overlaps automatically.
+          <div id="tile-bleed-yes-fields" style="display:none;">
+            <div class="tile-form-row">
+              <label>Actual sticker size (mm)</label>
+              <div style="display:flex;align-items:center;gap:4px;">
+                <input class="tick-input" id="tile-sticker-w" style="width:50px" oninput="onStickerSizeChange()">
+                <span style="color:var(--muted)">x</span>
+                <input class="tick-input" id="tile-sticker-h" style="width:50px" oninput="onStickerSizeChange()">
+              </div>
+            </div>
+            <div style="font-size:9px;font-family:'DM Mono',monospace;color:var(--muted);margin-top:-8px;" id="tile-bleed-info">
+              Enter your actual cut size. Bleed will overlap between copies.
+            </div>
+          </div>
+          <div id="tile-bleed-no-fields">
+            <div class="tile-form-row">
+              <label>Add bleed (mm per side)</label>
+              <input class="tick-input" id="tile-add-bleed" value="0" style="width:50px" oninput="onAddBleedChange()">
+            </div>
+            <div style="font-size:9px;font-family:'DM Mono',monospace;color:var(--muted);margin-top:-8px;" id="tile-add-bleed-info">
+              Extends your sticker by this amount on each side for safer cutting. Set to 0 for no bleed.
+            </div>
+          </div>
         </div>
         <div class="tile-form-row">
           <label>Horizontal align</label>
@@ -1683,6 +1700,7 @@ const SHEET_SIZES_MM = {
 
 let tileOrientation = 'portrait';
 let tileCropMarks = true;
+let tileBleedMode = 'no';  // 'no' = clean PDF, 'yes' = has bleed
 let tileAlignH = 'left';   // left | center | right
 let tileAlignV = 'top';    // top | middle | bottom
 
@@ -1695,14 +1713,34 @@ function openTilePanel() {
   document.getElementById('tile-src-h').textContent = srcH;
   document.getElementById('tile-sticker-w').value = srcW;
   document.getElementById('tile-sticker-h').value = srcH;
-  updateTilePreview();
+  document.getElementById('tile-add-bleed').value = '0';
+  // Reset bleed mode to No
+  setTileBleedMode('no');
 }
 
 function closeTilePanel() {
   document.getElementById('tile-modal').classList.remove('open');
 }
 
+function setTileBleedMode(mode) {
+  tileBleedMode = mode;
+  document.querySelectorAll('[data-bleed]').forEach(el => {
+    el.classList.toggle('active', el.dataset.bleed === mode);
+  });
+  document.getElementById('tile-bleed-yes-fields').style.display = mode === 'yes' ? 'block' : 'none';
+  document.getElementById('tile-bleed-no-fields').style.display = mode === 'no' ? 'block' : 'none';
+  if (mode === 'no') {
+    // Reset sticker size to PDF size, re-apply add-bleed
+    onAddBleedChange();
+  } else {
+    // Reset gap to 0 for bleed overlap
+    document.getElementById('tile-gap').value = '0';
+    onStickerSizeChange();
+  }
+}
+
 function onStickerSizeChange() {
+  // "Yes bleed" mode: user tells us actual sticker size
   const srcW = pageWidthPt * PT_TO.mm;
   const srcH = pageHeightPt * PT_TO.mm;
   const stickerW = parseFloat(document.getElementById('tile-sticker-w').value) || srcW;
@@ -1711,10 +1749,27 @@ function onStickerSizeChange() {
   const bleedH = Math.max(0, (srcH - stickerH) / 2);
   const infoEl = document.getElementById('tile-bleed-info');
   if (bleedW > 0.1 || bleedH > 0.1) {
-    infoEl.textContent = `Bleed: ${bleedW.toFixed(1)}mm per side. Gap auto-set to 0 for overlap.`;
+    infoEl.textContent = `Bleed: ${bleedW.toFixed(1)}mm per side. Gap set to 0 so bleeds overlap.`;
     document.getElementById('tile-gap').value = '0';
   } else {
-    infoEl.textContent = 'Your actual sticker size (what you want to cut). If smaller than PDF size, bleed overlaps automatically.';
+    infoEl.textContent = 'Enter your actual cut size. Bleed will overlap between copies.';
+  }
+  updateTilePreview();
+}
+
+function onAddBleedChange() {
+  // "No bleed" mode: tool extends the PDF by adding bleed
+  const addBleed = parseFloat(document.getElementById('tile-add-bleed').value) || 0;
+  const srcW = (pageWidthPt * PT_TO.mm);
+  const srcH = (pageHeightPt * PT_TO.mm);
+  const infoEl = document.getElementById('tile-add-bleed-info');
+  if (addBleed > 0) {
+    const totalW = (srcW + addBleed * 2).toFixed(1);
+    const totalH = (srcH + addBleed * 2).toFixed(1);
+    infoEl.textContent = `Each copy will be ${totalW} x ${totalH}mm with ${addBleed}mm bleed on each side.`;
+    document.getElementById('tile-gap').value = '0';
+  } else {
+    infoEl.textContent = 'Extends your sticker by this amount on each side for safer cutting. Set to 0 for no bleed.';
   }
   updateTilePreview();
 }
@@ -1778,9 +1833,18 @@ function computeTileLayout() {
   const gap = parseFloat(document.getElementById('tile-gap').value) || 0;
   const srcW = pageWidthPt * PT_TO.mm;
   const srcH = pageHeightPt * PT_TO.mm;
-  // Sticker size = cut size, used for grid layout. Source = full PDF with bleed.
-  const printW = parseFloat(document.getElementById('tile-sticker-w').value) || srcW;
-  const printH = parseFloat(document.getElementById('tile-sticker-h').value) || srcH;
+
+  let printW, printH;
+  if (tileBleedMode === 'yes') {
+    // PDF has bleed — sticker size is the cut size, source is larger
+    printW = parseFloat(document.getElementById('tile-sticker-w').value) || srcW;
+    printH = parseFloat(document.getElementById('tile-sticker-h').value) || srcH;
+  } else {
+    // No bleed — add bleed extends each side, grid slot = sticker + added bleed
+    const addBleed = parseFloat(document.getElementById('tile-add-bleed').value) || 0;
+    printW = srcW + addBleed * 2;
+    printH = srcH + addBleed * 2;
+  }
   const usableW = sheet.w - 2 * margin;
   const usableH = sheet.h - 2 * margin;
   const cols = Math.max(0, Math.floor((usableW + gap) / (printW + gap)));
@@ -1848,13 +1912,22 @@ function updateTilePreview() {
     for (let c = 0; c < cols; c++) {
       const x = mS + oX + c * (cW + gS);
       const y = mS + oY + r * (cH + gS);
-      // Draw bleed area (lighter) then slot area (darker)
       if (bleedXPx > 0 || bleedYPx > 0) {
+        // PDF has bleed: show bleed area extending beyond slot
         ctx.fillStyle = '#e8e2d8';
         ctx.fillRect(x - bleedXPx, y - bleedYPx, srcCW, srcCH);
+        ctx.fillStyle = '#f0ece4';
+        ctx.fillRect(x, y, cW, cH);
+      } else if (bleedXPx < 0 || bleedYPx < 0) {
+        // Added bleed: slot is larger, show bleed zone around sticker
+        ctx.fillStyle = '#dde8d8';
+        ctx.fillRect(x, y, cW, cH);
+        ctx.fillStyle = '#f0ece4';
+        ctx.fillRect(x - bleedXPx, y - bleedYPx, srcCW, srcCH);
+      } else {
+        ctx.fillStyle = '#f0ece4';
+        ctx.fillRect(x, y, cW, cH);
       }
-      ctx.fillStyle = '#f0ece4';
-      ctx.fillRect(x, y, cW, cH);
       ctx.strokeStyle = '#bbb';
       ctx.lineWidth = 0.5;
       ctx.strokeRect(x, y, cW, cH);
