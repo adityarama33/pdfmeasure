@@ -826,33 +826,26 @@
           </div>
         </div>
         <div class="tile-form-row">
-          <label>Source size (mm)</label>
+          <label>PDF size (mm)</label>
           <div style="display:flex;align-items:center;gap:4px;">
-            <input class="tick-input" id="tile-src-w" style="width:50px" oninput="updateTilePreview()">
+            <span class="tick-input" id="tile-src-w" style="width:50px;display:inline-block;opacity:0.6;background:transparent;border-color:#333;">—</span>
             <span style="color:var(--muted)">x</span>
-            <input class="tick-input" id="tile-src-h" style="width:50px" oninput="updateTilePreview()">
+            <span class="tick-input" id="tile-src-h" style="width:50px;display:inline-block;opacity:0.6;background:transparent;border-color:#333;">—</span>
           </div>
         </div>
         <div style="font-size:9px;font-family:'DM Mono',monospace;color:var(--muted);margin-top:-8px;">
-          Detected from PDF. Edit if your sticker is a different size.
-        </div>
-        <div class="tile-form-row" id="tile-trim-row" style="display:none">
-          <label>Trim bleed (crop to size)</label>
-          <div class="tick-pills">
-            <button class="tick-pill active" data-trim="off" onclick="setTileTrim(false)">Off</button>
-            <button class="tick-pill" data-trim="on" onclick="setTileTrim(true)">On</button>
-          </div>
+          Detected from your PDF (includes bleed if any).
         </div>
         <div class="tile-form-row">
-          <label>Print size (mm)</label>
+          <label>Sticker size (mm)</label>
           <div style="display:flex;align-items:center;gap:4px;">
-            <input class="tick-input" id="tile-print-w" style="width:50px" oninput="updateTilePreview()">
+            <input class="tick-input" id="tile-sticker-w" style="width:50px" oninput="onStickerSizeChange()">
             <span style="color:var(--muted)">x</span>
-            <input class="tick-input" id="tile-print-h" style="width:50px" oninput="updateTilePreview()">
+            <input class="tick-input" id="tile-sticker-h" style="width:50px" oninput="onStickerSizeChange()">
           </div>
         </div>
-        <div style="font-size:9px;font-family:'DM Mono',monospace;color:var(--muted);margin-top:-8px;">
-          Size of each copy on the sheet. Change to scale up or down.
+        <div style="font-size:9px;font-family:'DM Mono',monospace;color:var(--muted);margin-top:-8px;" id="tile-bleed-info">
+          Your actual sticker size (what you want to cut). If smaller than PDF size, bleed overlaps automatically.
         </div>
         <div class="tile-form-row">
           <label>Horizontal align</label>
@@ -1180,10 +1173,36 @@ function drawMeasurements() {
   // Draw active measurement
   if (rulerMode && rulerStart && currentMousePos) {
     drawMeasureLine(ctx, rulerStart.x, rulerStart.y, currentMousePos.x, currentMousePos.y, null, true);
+    // Draw snap guide lines when straight mode is active
+    if (snapStraight || shiftHeld) {
+      drawSnapGuides(ctx, rulerStart, currentMousePos);
+    }
   }
 
   // Draw all stored + in-progress lines
   drawAllLines();
+  // Draw snap guide for active line drawing
+  if (lineDrawMode && lineStart && currentMousePos && (snapStraight || shiftHeld)) {
+    drawSnapGuides(ctx, lineStart, currentMousePos);
+  }
+}
+
+function drawSnapGuides(ctx, start, end) {
+  const dx = Math.abs(end.x - start.x);
+  const dy = Math.abs(end.y - start.y);
+  const isH = dx > dy;
+  ctx.save();
+  ctx.strokeStyle = isH ? 'rgba(71,200,255,0.3)' : 'rgba(255,71,200,0.3)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 4]);
+  if (isH) {
+    // Horizontal guide across full canvas
+    ctx.beginPath(); ctx.moveTo(0, start.y); ctx.lineTo(ctx.canvas.width, start.y); ctx.stroke();
+  } else {
+    // Vertical guide across full canvas
+    ctx.beginPath(); ctx.moveTo(start.x, 0); ctx.lineTo(start.x, ctx.canvas.height); ctx.stroke();
+  }
+  ctx.restore();
 }
 
 function drawMeasureLine(ctx, x1, y1, x2, y2, label, isActive) {
@@ -1664,7 +1683,6 @@ const SHEET_SIZES_MM = {
 
 let tileOrientation = 'portrait';
 let tileCropMarks = true;
-let tileTrimBleed = false;
 let tileAlignH = 'left';   // left | center | right
 let tileAlignV = 'top';    // top | middle | bottom
 
@@ -1673,15 +1691,32 @@ function openTilePanel() {
   document.getElementById('tile-modal').classList.add('open');
   const srcW = (pageWidthPt * PT_TO.mm).toFixed(1);
   const srcH = (pageHeightPt * PT_TO.mm).toFixed(1);
-  document.getElementById('tile-src-w').value = srcW;
-  document.getElementById('tile-src-h').value = srcH;
-  document.getElementById('tile-print-w').value = srcW;
-  document.getElementById('tile-print-h').value = srcH;
+  document.getElementById('tile-src-w').textContent = srcW;
+  document.getElementById('tile-src-h').textContent = srcH;
+  document.getElementById('tile-sticker-w').value = srcW;
+  document.getElementById('tile-sticker-h').value = srcH;
   updateTilePreview();
 }
 
 function closeTilePanel() {
   document.getElementById('tile-modal').classList.remove('open');
+}
+
+function onStickerSizeChange() {
+  const srcW = pageWidthPt * PT_TO.mm;
+  const srcH = pageHeightPt * PT_TO.mm;
+  const stickerW = parseFloat(document.getElementById('tile-sticker-w').value) || srcW;
+  const stickerH = parseFloat(document.getElementById('tile-sticker-h').value) || srcH;
+  const bleedW = Math.max(0, (srcW - stickerW) / 2);
+  const bleedH = Math.max(0, (srcH - stickerH) / 2);
+  const infoEl = document.getElementById('tile-bleed-info');
+  if (bleedW > 0.1 || bleedH > 0.1) {
+    infoEl.textContent = `Bleed: ${bleedW.toFixed(1)}mm per side. Gap auto-set to 0 for overlap.`;
+    document.getElementById('tile-gap').value = '0';
+  } else {
+    infoEl.textContent = 'Your actual sticker size (what you want to cut). If smaller than PDF size, bleed overlaps automatically.';
+  }
+  updateTilePreview();
 }
 
 function onTileSheetChange() {
@@ -1706,13 +1741,6 @@ function setTileCropMarks(on) {
   updateTilePreview();
 }
 
-function setTileTrim(on) {
-  tileTrimBleed = on;
-  document.querySelectorAll('[data-trim]').forEach(el => {
-    el.classList.toggle('active', (el.dataset.trim === 'on') === on);
-  });
-  updateTilePreview();
-}
 
 function setTileAlignH(val) {
   tileAlignH = val;
@@ -1748,11 +1776,11 @@ function computeTileLayout() {
   const sheet = getSheetDimsMM();
   const margin = parseFloat(document.getElementById('tile-margin').value) || 0;
   const gap = parseFloat(document.getElementById('tile-gap').value) || 0;
-  const srcW = parseFloat(document.getElementById('tile-src-w').value) || (pageWidthPt * PT_TO.mm);
-  const srcH = parseFloat(document.getElementById('tile-src-h').value) || (pageHeightPt * PT_TO.mm);
-  // Print size = size of each copy on the sheet (may differ from source for scaling)
-  const printW = parseFloat(document.getElementById('tile-print-w').value) || srcW;
-  const printH = parseFloat(document.getElementById('tile-print-h').value) || srcH;
+  const srcW = pageWidthPt * PT_TO.mm;
+  const srcH = pageHeightPt * PT_TO.mm;
+  // Sticker size = cut size, used for grid layout. Source = full PDF with bleed.
+  const printW = parseFloat(document.getElementById('tile-sticker-w').value) || srcW;
+  const printH = parseFloat(document.getElementById('tile-sticker-h').value) || srcH;
   const usableW = sheet.w - 2 * margin;
   const usableH = sheet.h - 2 * margin;
   const cols = Math.max(0, Math.floor((usableW + gap) / (printW + gap)));
@@ -1769,14 +1797,7 @@ function computeTileLayout() {
 function updateTilePreview() {
   if (!pdfDoc) return;
 
-  // Show trim option if source size differs from detected PDF size
-  const detectedW = (pageWidthPt * PT_TO.mm).toFixed(1);
-  const detectedH = (pageHeightPt * PT_TO.mm).toFixed(1);
-  const inputW = document.getElementById('tile-src-w').value;
-  const inputH = document.getElementById('tile-src-h').value;
-  const sizeChanged = inputW !== detectedW || inputH !== detectedH;
-  document.getElementById('tile-trim-row').style.display = sizeChanged ? 'flex' : 'none';
-  if (!sizeChanged) tileTrimBleed = false;
+  // Trim bleed is no longer a separate option — bleed overlap is handled automatically
 
   const layout = computeTileLayout();
   const { sheet, margin, gap, printW, printH, cols, rows, total } = layout;
@@ -1890,17 +1911,6 @@ async function generateTiledPDF() {
   const { PDFDocument, rgb } = PDFLib;
   const srcDoc = await PDFDocument.load(pdfRawBytes);
 
-  // If trimming, modify the source page's CropBox before embedding
-  if (tileTrimBleed) {
-    const mmToPt = 2.83465;
-    const srcPage = srcDoc.getPage(0);
-    const { width: origW, height: origH } = srcPage.getSize();
-    const trimW = layout.srcW * mmToPt;
-    const trimH = layout.srcH * mmToPt;
-    const offsetX = (origW - trimW) / 2;
-    const offsetY = (origH - trimH) / 2;
-    srcPage.setCropBox(offsetX, offsetY, trimW, trimH);
-  }
 
   const newDoc = await PDFDocument.create();
   const [embeddedPage] = await newDoc.embedPdf(srcDoc, [0]);
