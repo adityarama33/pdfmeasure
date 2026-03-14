@@ -811,11 +811,11 @@
           </div>
         </div>
         <div class="tile-form-row">
-          <label>Gap between copies (mm)</label>
+          <label>Gap between copies (<span class="tile-unit-label">mm</span>)</label>
           <input class="tick-input" id="tile-gap" value="2" style="width:50px" oninput="updateTilePreview()">
         </div>
         <div class="tile-form-row">
-          <label>Sheet margin (mm)</label>
+          <label>Sheet margin (<span class="tile-unit-label">mm</span>)</label>
           <input class="tick-input" id="tile-margin" value="5" style="width:50px" oninput="updateTilePreview()">
         </div>
         <div class="tile-form-row">
@@ -826,8 +826,11 @@
           </div>
         </div>
         <div style="border-top:1px solid var(--border);margin:8px 0;padding-top:8px;">
+          <div style="font-size:9px;font-family:'DM Mono',monospace;color:var(--muted);margin-bottom:8px;">
+            Upload your sticker without bleed or crop marks. We'll add them for you.
+          </div>
           <div class="tile-form-row">
-            <label>PDF size (mm)</label>
+            <label>Sticker size (<span class="tile-unit-label">mm</span>)</label>
             <div style="display:flex;align-items:center;gap:4px;">
               <span class="tick-input" id="tile-src-w" style="width:50px;display:inline-block;opacity:0.6;background:transparent;border-color:#333;">—</span>
               <span style="color:var(--muted)">x</span>
@@ -835,33 +838,11 @@
             </div>
           </div>
           <div class="tile-form-row">
-            <label>Does your PDF include bleed?</label>
-            <div class="tick-pills">
-              <button class="tick-pill active" data-bleed="no" onclick="setTileBleedMode('no')">No</button>
-              <button class="tick-pill" data-bleed="yes" onclick="setTileBleedMode('yes')">Yes</button>
-            </div>
+            <label>Add bleed (<span class="tile-unit-label">mm</span> per side)</label>
+            <input class="tick-input" id="tile-add-bleed" value="0" style="width:50px" oninput="onAddBleedChange()">
           </div>
-          <div id="tile-bleed-yes-fields" style="display:none;">
-            <div class="tile-form-row">
-              <label>Actual sticker size (mm)</label>
-              <div style="display:flex;align-items:center;gap:4px;">
-                <input class="tick-input" id="tile-sticker-w" style="width:50px" oninput="onStickerSizeChange()">
-                <span style="color:var(--muted)">x</span>
-                <input class="tick-input" id="tile-sticker-h" style="width:50px" oninput="onStickerSizeChange()">
-              </div>
-            </div>
-            <div style="font-size:9px;font-family:'DM Mono',monospace;color:var(--muted);margin-top:-8px;" id="tile-bleed-info">
-              Enter your actual cut size. Bleed will overlap between copies.
-            </div>
-          </div>
-          <div id="tile-bleed-no-fields">
-            <div class="tile-form-row">
-              <label>Add bleed (mm per side)</label>
-              <input class="tick-input" id="tile-add-bleed" value="0" style="width:50px" oninput="onAddBleedChange()">
-            </div>
-            <div style="font-size:9px;font-family:'DM Mono',monospace;color:var(--muted);margin-top:-8px;" id="tile-add-bleed-info">
-              Extends your sticker by this amount on each side for safer cutting. Set to 0 for no bleed.
-            </div>
+          <div style="font-size:9px;font-family:'DM Mono',monospace;color:var(--muted);margin-top:-8px;" id="tile-add-bleed-info">
+            Adds extra space around each sticker for safer cutting. Set to 0 for no bleed.
           </div>
         </div>
         <div class="tile-form-row">
@@ -1700,76 +1681,62 @@ const SHEET_SIZES_MM = {
 
 let tileOrientation = 'portrait';
 let tileCropMarks = true;
-let tileBleedMode = 'no';  // 'no' = clean PDF, 'yes' = has bleed
 let tileAlignH = 'left';   // left | center | right
 let tileAlignV = 'top';    // top | middle | bottom
+
+function getTileUnit() { return unit === 'px' ? 'mm' : unit; }
+function ptToTileUnit(pt) { return pt * PT_TO[getTileUnit()]; }
+function tileUnitToMM(val) {
+  const u = getTileUnit();
+  if (u === 'mm') return val;
+  if (u === 'cm') return val * 10;
+  if (u === 'in') return val * 25.4;
+  return val;
+}
+function tileUnitDec() { const u = getTileUnit(); return u === 'mm' ? 1 : 2; }
 
 function openTilePanel() {
   if (!pdfDoc) return;
   document.getElementById('tile-modal').classList.add('open');
-  const srcW = (pageWidthPt * PT_TO.mm).toFixed(1);
-  const srcH = (pageHeightPt * PT_TO.mm).toFixed(1);
+  const tu = getTileUnit();
+  document.querySelectorAll('.tile-unit-label').forEach(el => el.textContent = tu);
+  const dec = tileUnitDec();
+  const srcW = ptToTileUnit(pageWidthPt).toFixed(dec);
+  const srcH = ptToTileUnit(pageHeightPt).toFixed(dec);
   document.getElementById('tile-src-w').textContent = srcW;
   document.getElementById('tile-src-h').textContent = srcH;
-  document.getElementById('tile-sticker-w').value = srcW;
-  document.getElementById('tile-sticker-h').value = srcH;
-  document.getElementById('tile-add-bleed').value = '0';
-  // Reset bleed mode to No
-  setTileBleedMode('no');
+  // Set defaults in current unit
+  const marginMM = 5;
+  const marginU = (marginMM / tileUnitToMM(1)).toFixed(dec);
+  document.getElementById('tile-margin').value = marginU;
+  document.getElementById('tile-gap').value = '0';
+  // Default 3mm bleed for safer cutting
+  const defaultBleedMM = 3;
+  const defaultBleedU = (defaultBleedMM / tileUnitToMM(1)).toFixed(dec);
+  document.getElementById('tile-add-bleed').value = defaultBleedU;
+  // Trigger bleed change to update info text and preview
+  onAddBleedChange();
 }
 
 function closeTilePanel() {
   document.getElementById('tile-modal').classList.remove('open');
 }
 
-function setTileBleedMode(mode) {
-  tileBleedMode = mode;
-  document.querySelectorAll('[data-bleed]').forEach(el => {
-    el.classList.toggle('active', el.dataset.bleed === mode);
-  });
-  document.getElementById('tile-bleed-yes-fields').style.display = mode === 'yes' ? 'block' : 'none';
-  document.getElementById('tile-bleed-no-fields').style.display = mode === 'no' ? 'block' : 'none';
-  if (mode === 'no') {
-    // Reset sticker size to PDF size, re-apply add-bleed
-    onAddBleedChange();
-  } else {
-    // Reset gap to 0 for bleed overlap
-    document.getElementById('tile-gap').value = '0';
-    onStickerSizeChange();
-  }
-}
-
-function onStickerSizeChange() {
-  // "Yes bleed" mode: user tells us actual sticker size
-  const srcW = pageWidthPt * PT_TO.mm;
-  const srcH = pageHeightPt * PT_TO.mm;
-  const stickerW = parseFloat(document.getElementById('tile-sticker-w').value) || srcW;
-  const stickerH = parseFloat(document.getElementById('tile-sticker-h').value) || srcH;
-  const bleedW = Math.max(0, (srcW - stickerW) / 2);
-  const bleedH = Math.max(0, (srcH - stickerH) / 2);
-  const infoEl = document.getElementById('tile-bleed-info');
-  if (bleedW > 0.1 || bleedH > 0.1) {
-    infoEl.textContent = `Bleed: ${bleedW.toFixed(1)}mm per side. Gap set to 0 so bleeds overlap.`;
-    document.getElementById('tile-gap').value = '0';
-  } else {
-    infoEl.textContent = 'Enter your actual cut size. Bleed will overlap between copies.';
-  }
-  updateTilePreview();
-}
-
 function onAddBleedChange() {
-  // "No bleed" mode: tool extends the PDF by adding bleed
+  // Add bleed: extends each side of the sticker for safer cutting
+  const tu = getTileUnit();
+  const dec = tileUnitDec();
   const addBleed = parseFloat(document.getElementById('tile-add-bleed').value) || 0;
-  const srcW = (pageWidthPt * PT_TO.mm);
-  const srcH = (pageHeightPt * PT_TO.mm);
+  const srcW = ptToTileUnit(pageWidthPt);
+  const srcH = ptToTileUnit(pageHeightPt);
   const infoEl = document.getElementById('tile-add-bleed-info');
   if (addBleed > 0) {
-    const totalW = (srcW + addBleed * 2).toFixed(1);
-    const totalH = (srcH + addBleed * 2).toFixed(1);
-    infoEl.textContent = `Each copy will be ${totalW} x ${totalH}mm with ${addBleed}mm bleed on each side.`;
+    const totalW = (srcW + addBleed * 2).toFixed(dec);
+    const totalH = (srcH + addBleed * 2).toFixed(dec);
+    infoEl.textContent = `Each copy will be ${totalW} x ${totalH}${tu} with ${addBleed}${tu} bleed on each side.`;
     document.getElementById('tile-gap').value = '0';
   } else {
-    infoEl.textContent = 'Extends your sticker by this amount on each side for safer cutting. Set to 0 for no bleed.';
+    infoEl.textContent = 'Adds extra space around each sticker for safer cutting. Set to 0 for no bleed.';
   }
   updateTilePreview();
 }
@@ -1829,22 +1796,15 @@ function getSheetDimsMM() {
 
 function computeTileLayout() {
   const sheet = getSheetDimsMM();
-  const margin = parseFloat(document.getElementById('tile-margin').value) || 0;
-  const gap = parseFloat(document.getElementById('tile-gap').value) || 0;
+  const margin = tileUnitToMM(parseFloat(document.getElementById('tile-margin').value) || 0);
+  const gap = tileUnitToMM(parseFloat(document.getElementById('tile-gap').value) || 0);
   const srcW = pageWidthPt * PT_TO.mm;
   const srcH = pageHeightPt * PT_TO.mm;
+  const addBleed = tileUnitToMM(parseFloat(document.getElementById('tile-add-bleed').value) || 0);
 
-  let printW, printH;
-  if (tileBleedMode === 'yes') {
-    // PDF has bleed — sticker size is the cut size, source is larger
-    printW = parseFloat(document.getElementById('tile-sticker-w').value) || srcW;
-    printH = parseFloat(document.getElementById('tile-sticker-h').value) || srcH;
-  } else {
-    // No bleed — add bleed extends each side, grid slot = sticker + added bleed
-    const addBleed = parseFloat(document.getElementById('tile-add-bleed').value) || 0;
-    printW = srcW + addBleed * 2;
-    printH = srcH + addBleed * 2;
-  }
+  // printW/printH = total size of each copy on sheet (sticker + bleed on each side)
+  const printW = srcW + addBleed * 2;
+  const printH = srcH + addBleed * 2;
   const usableW = sheet.w - 2 * margin;
   const usableH = sheet.h - 2 * margin;
   const cols = Math.max(0, Math.floor((usableW + gap) / (printW + gap)));
@@ -1902,28 +1862,22 @@ function updateTilePreview() {
   const oX = layout.offsetX * scale;
   const oY = layout.offsetY * scale;
 
-  // Source size may be larger than print size (bleed extends beyond slot)
+  // Sticker (source) is centered in slot. If addBleed > 0, slot is larger than source.
   const srcCW = layout.srcW * scale;
   const srcCH = layout.srcH * scale;
-  const bleedXPx = (srcCW - cW) / 2;
-  const bleedYPx = (srcCH - cH) / 2;
+  const bleedXPx = (cW - srcCW) / 2; // positive when bleed added
+  const bleedYPx = (cH - srcCH) / 2;
 
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       const x = mS + oX + c * (cW + gS);
       const y = mS + oY + r * (cH + gS);
-      if (bleedXPx > 0 || bleedYPx > 0) {
-        // PDF has bleed: show bleed area extending beyond slot
-        ctx.fillStyle = '#e8e2d8';
-        ctx.fillRect(x - bleedXPx, y - bleedYPx, srcCW, srcCH);
-        ctx.fillStyle = '#f0ece4';
-        ctx.fillRect(x, y, cW, cH);
-      } else if (bleedXPx < 0 || bleedYPx < 0) {
-        // Added bleed: slot is larger, show bleed zone around sticker
+      if (bleedXPx > 0.5 || bleedYPx > 0.5) {
+        // Show bleed zone (green tint) around sticker
         ctx.fillStyle = '#dde8d8';
         ctx.fillRect(x, y, cW, cH);
         ctx.fillStyle = '#f0ece4';
-        ctx.fillRect(x - bleedXPx, y - bleedYPx, srcCW, srcCH);
+        ctx.fillRect(x + bleedXPx, y + bleedYPx, srcCW, srcCH);
       } else {
         ctx.fillStyle = '#f0ece4';
         ctx.fillRect(x, y, cW, cH);
@@ -1934,43 +1888,34 @@ function updateTilePreview() {
     }
   }
 
-  // Crop marks: full cut lines extending to sheet edges
+  // Crop marks: L-shaped corner marks in bleed area around each sticker
   if (tileCropMarks && total > 0) {
     ctx.strokeStyle = '#000';
-    ctx.lineWidth = 0.5;
-    const cropExt = Math.max(mS, 3 * scale); // extend to margin or 3mm min
+    ctx.lineWidth = 1;
+    const mrkX = bleedXPx > 1 ? Math.min(bleedXPx - 0.5, 10 * scale) : Math.max(3 * scale, 4);
+    const mrkY = bleedYPx > 1 ? Math.min(bleedYPx - 0.5, 10 * scale) : Math.max(3 * scale, 4);
 
-    // Vertical cut lines (at each column boundary)
-    for (let c = 0; c <= cols; c++) {
-      // Left edge of column c
-      if (c < cols) {
-        const xl = mS + oX + c * (cW + gS);
-        ctx.beginPath(); ctx.moveTo(xl, 0); ctx.lineTo(xl, mS + oY); ctx.stroke();
-        const gridBottom = mS + oY + rows * cH + (rows - 1) * gS;
-        ctx.beginPath(); ctx.moveTo(xl, gridBottom); ctx.lineTo(xl, canvas.height); ctx.stroke();
-      }
-      // Right edge of column c-1
-      if (c > 0) {
-        const xr = mS + oX + c * cW + (c - 1) * gS;
-        ctx.beginPath(); ctx.moveTo(xr, 0); ctx.lineTo(xr, mS + oY); ctx.stroke();
-        const gridBottom = mS + oY + rows * cH + (rows - 1) * gS;
-        ctx.beginPath(); ctx.moveTo(xr, gridBottom); ctx.lineTo(xr, canvas.height); ctx.stroke();
-      }
-    }
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const sx = mS + oX + c * (cW + gS);
+        const sy = mS + oY + r * (cH + gS);
+        const left = sx + bleedXPx;
+        const right = sx + bleedXPx + srcCW;
+        const top = sy + bleedYPx;
+        const bottom = sy + bleedYPx + srcCH;
 
-    // Horizontal cut lines (at each row boundary)
-    for (let r = 0; r <= rows; r++) {
-      if (r < rows) {
-        const yt = mS + oY + r * (cH + gS);
-        ctx.beginPath(); ctx.moveTo(0, yt); ctx.lineTo(mS + oX, yt); ctx.stroke();
-        const gridRight = mS + oX + cols * cW + (cols - 1) * gS;
-        ctx.beginPath(); ctx.moveTo(gridRight, yt); ctx.lineTo(canvas.width, yt); ctx.stroke();
-      }
-      if (r > 0) {
-        const yb = mS + oY + r * cH + (r - 1) * gS;
-        ctx.beginPath(); ctx.moveTo(0, yb); ctx.lineTo(mS + oX, yb); ctx.stroke();
-        const gridRight = mS + oX + cols * cW + (cols - 1) * gS;
-        ctx.beginPath(); ctx.moveTo(gridRight, yb); ctx.lineTo(canvas.width, yb); ctx.stroke();
+        // Top-left (marks go up and left into bleed)
+        ctx.beginPath(); ctx.moveTo(left, top); ctx.lineTo(left, top - mrkY); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(left, top); ctx.lineTo(left - mrkX, top); ctx.stroke();
+        // Top-right
+        ctx.beginPath(); ctx.moveTo(right, top); ctx.lineTo(right, top - mrkY); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(right, top); ctx.lineTo(right + mrkX, top); ctx.stroke();
+        // Bottom-left
+        ctx.beginPath(); ctx.moveTo(left, bottom); ctx.lineTo(left, bottom + mrkY); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(left, bottom); ctx.lineTo(left - mrkX, bottom); ctx.stroke();
+        // Bottom-right
+        ctx.beginPath(); ctx.moveTo(right, bottom); ctx.lineTo(right, bottom + mrkY); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(right, bottom); ctx.lineTo(right + mrkX, bottom); ctx.stroke();
       }
     }
   }
@@ -1984,20 +1929,6 @@ async function generateTiledPDF() {
   const { PDFDocument, rgb } = PDFLib;
   const srcDoc = await PDFDocument.load(pdfRawBytes);
 
-  // When PDF has bleed, crop to sticker size to remove built-in crop marks
-  // The bleed area is preserved by drawing at source size, but the CropBox
-  // hides the original PDF's crop marks outside the sticker boundary
-  if (tileBleedMode === 'yes' && (layout.printW < layout.srcW || layout.printH < layout.srcH)) {
-    const mmToPtC = 2.83465;
-    const srcPage = srcDoc.getPage(0);
-    const { width: origW, height: origH } = srcPage.getSize();
-    const cropW = layout.printW * mmToPtC;
-    const cropH = layout.printH * mmToPtC;
-    const offsetX = (origW - cropW) / 2;
-    const offsetY = (origH - cropH) / 2;
-    srcPage.setCropBox(offsetX, offsetY, cropW, cropH);
-  }
-
   const newDoc = await PDFDocument.create();
   const [embeddedPage] = await newDoc.embedPdf(srcDoc, [0]);
 
@@ -2008,6 +1939,8 @@ async function generateTiledPDF() {
   const gapPt = layout.gap * mmToPt;
   const printWPt = layout.printW * mmToPt;
   const printHPt = layout.printH * mmToPt;
+  const srcWPt = layout.srcW * mmToPt;
+  const srcHPt = layout.srcH * mmToPt;
 
   const page = newDoc.addPage([sheetWPt, sheetHPt]);
 
@@ -2015,57 +1948,50 @@ async function generateTiledPDF() {
   const oXPt = layout.offsetX * mmToPt;
   const oYPt = layout.offsetY * mmToPt;
 
-  // Place all copies
-  // If CropBox was applied (yes-bleed mode), embedded page is already sticker-sized
-  // If no bleed mode, source = print size (or source is drawn centered for add-bleed)
-  const wasCropped = tileBleedMode === 'yes' && (layout.printW < layout.srcW || layout.printH < layout.srcH);
-  const drawW = wasCropped ? printWPt : layout.srcW * mmToPt;
-  const drawH = wasCropped ? printHPt : layout.srcH * mmToPt;
-  const bleedX = (drawW - printWPt) / 2;
-  const bleedY = (drawH - printHPt) / 2;
+  // Each slot is printW x printH (sticker + bleed). The sticker PDF is drawn
+  // centered in the slot — bleed is empty space around the sticker.
+  const bleedXPt = (printWPt - srcWPt) / 2;
+  const bleedYPt = (printHPt - srcHPt) / 2;
 
   for (let row = 0; row < layout.rows; row++) {
     for (let col = 0; col < layout.cols; col++) {
       const slotX = marginPt + oXPt + col * (printWPt + gapPt);
       const slotY = sheetHPt - marginPt - oYPt - (row + 1) * printHPt - row * gapPt;
-      page.drawPage(embeddedPage, { x: slotX - bleedX, y: slotY - bleedY, width: drawW, height: drawH });
+      page.drawPage(embeddedPage, { x: slotX + bleedXPt, y: slotY + bleedYPt, width: srcWPt, height: srcHPt });
     }
   }
 
-  // Crop marks: full cut lines extending to sheet edges
+  // Crop marks — L-shaped corner marks in the bleed area around each sticker
   if (tileCropMarks && layout.total > 0) {
     const black = rgb(0, 0, 0);
     const lw = 0.5;
-    const gridBottom = sheetHPt - marginPt - oYPt - layout.rows * printHPt - (layout.rows - 1) * gapPt;
-    const gridTop = sheetHPt - marginPt - oYPt;
-    const gridLeft = marginPt + oXPt;
-    const gridRight = marginPt + oXPt + layout.cols * printWPt + (layout.cols - 1) * gapPt;
+    // Mark length = most of the bleed, clamped to reasonable range
+    const markLen = bleedXPt > 1 ? Math.min(bleedXPt - 0.5, 10 * mmToPt) : 5 * mmToPt;
+    const markLenY = bleedYPt > 1 ? Math.min(bleedYPt - 0.5, 10 * mmToPt) : 5 * mmToPt;
+    const offset = 1; // 1pt gap from sticker edge
 
-    // Vertical cut lines
-    for (let c = 0; c <= layout.cols; c++) {
-      if (c < layout.cols) {
-        const xl = marginPt + oXPt + c * (printWPt + gapPt);
-        page.drawLine({ start: { x: xl, y: sheetHPt }, end: { x: xl, y: gridTop }, thickness: lw, color: black });
-        page.drawLine({ start: { x: xl, y: gridBottom }, end: { x: xl, y: 0 }, thickness: lw, color: black });
-      }
-      if (c > 0) {
-        const xr = marginPt + oXPt + c * printWPt + (c - 1) * gapPt;
-        page.drawLine({ start: { x: xr, y: sheetHPt }, end: { x: xr, y: gridTop }, thickness: lw, color: black });
-        page.drawLine({ start: { x: xr, y: gridBottom }, end: { x: xr, y: 0 }, thickness: lw, color: black });
-      }
-    }
+    for (let row = 0; row < layout.rows; row++) {
+      for (let col = 0; col < layout.cols; col++) {
+        const slotX = marginPt + oXPt + col * (printWPt + gapPt);
+        const slotY = sheetHPt - marginPt - oYPt - (row + 1) * printHPt - row * gapPt;
+        // Sticker edges within slot
+        const left = slotX + bleedXPt;
+        const right = slotX + bleedXPt + srcWPt;
+        const bottom = slotY + bleedYPt;
+        const top = slotY + bleedYPt + srcHPt;
 
-    // Horizontal cut lines
-    for (let r = 0; r <= layout.rows; r++) {
-      if (r < layout.rows) {
-        const yt = sheetHPt - marginPt - oYPt - r * (printHPt + gapPt);
-        page.drawLine({ start: { x: 0, y: yt }, end: { x: gridLeft, y: yt }, thickness: lw, color: black });
-        page.drawLine({ start: { x: gridRight, y: yt }, end: { x: sheetWPt, y: yt }, thickness: lw, color: black });
-      }
-      if (r > 0) {
-        const yb = sheetHPt - marginPt - oYPt - r * printHPt - (r - 1) * gapPt;
-        page.drawLine({ start: { x: 0, y: yb }, end: { x: gridLeft, y: yb }, thickness: lw, color: black });
-        page.drawLine({ start: { x: gridRight, y: yb }, end: { x: sheetWPt, y: yb }, thickness: lw, color: black });
+        // Top-left corner (marks extend up and left into bleed)
+        page.drawLine({ start: { x: left, y: top + offset }, end: { x: left, y: top + markLenY }, thickness: lw, color: black });
+        page.drawLine({ start: { x: left - offset, y: top }, end: { x: left - markLen, y: top }, thickness: lw, color: black });
+        // Top-right corner (marks extend up and right into bleed)
+        page.drawLine({ start: { x: right, y: top + offset }, end: { x: right, y: top + markLenY }, thickness: lw, color: black });
+        page.drawLine({ start: { x: right + offset, y: top }, end: { x: right + markLen, y: top }, thickness: lw, color: black });
+        // Bottom-left corner (marks extend down and left into bleed)
+        page.drawLine({ start: { x: left, y: bottom - offset }, end: { x: left, y: bottom - markLenY }, thickness: lw, color: black });
+        page.drawLine({ start: { x: left - offset, y: bottom }, end: { x: left - markLen, y: bottom }, thickness: lw, color: black });
+        // Bottom-right corner (marks extend down and right into bleed)
+        page.drawLine({ start: { x: right, y: bottom - offset }, end: { x: right, y: bottom - markLenY }, thickness: lw, color: black });
+        page.drawLine({ start: { x: right + offset, y: bottom }, end: { x: right + markLen, y: bottom }, thickness: lw, color: black });
       }
     }
   }
